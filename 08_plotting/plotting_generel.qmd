@@ -1,0 +1,108 @@
+# Plots for Attempt 3
+## Load libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(pdp)
+library(ranger)
+library(vegan)
+library(ggplot2)
+library(tidyverse)
+library(extrafont)
+library(ggsci)
+library(sf)
+source("./_config.r")
+DIR_PLOTS <- "08_plotting/plots"
+```
+
+### Set color palette and global size settings
+```{r}
+###
+### Color palette and global size setting
+###
+# Load color palette
+pal = pal_npg("nrc")(10)
+
+# Plot these colors
+# barplot(rep(1, 10), col = pal, border = NA, space = 0, axes = FALSE)
+
+# Set plot width
+plot_width = 11 # in inches
+
+###
+### Global ggplot2 theme settings
+###
+
+# Set global theme for ggplot2
+theme_set(
+    theme_classic() + # Start with a base theme
+    theme(
+    # 1. Globaly set font family and size for all text elements
+    text = element_text(
+        family = "Sans", # Global font family
+        size = 20          # Global base font size
+    ),
+
+    # 2. Fine-tuning for specific elements (overrides the global setting)
+    # Axis titles
+    axis.title = element_text(
+        size = 11, 
+        color = "black"
+    ),
+
+    # Axis text (text on the axes)
+    axis.text = element_text(size = 11, color = "black"),
+
+    # Legend titles
+    legend.title = element_text(
+        size = 11, 
+        face = "bold"
+    ),
+    # Legend text (text next to the symbols in the legend)
+    legend.text = element_text(size = 11)
+    )
+)
+```
+
+
+## Simple locations plot
+```{r}
+# Load plot coordinates
+plot_coords <- readRDS(PATH_PLOT_COORDS_RDS)
+
+# Load Swiss boundary shapefile
+country_ch <- st_read(file.path(PATH_ASSETS, "swissboundaries3d_2025-04_2056_5728.shp/swissBOUNDARIES3D_1_5_TLM_LANDESGEBIET.shp")) |>
+  st_zm() |>
+  filter(ICC == "CH") |>
+  st_transform(2056)
+
+# Load lakes, clip to Switzerland, and remove small lakes below threshold
+min_lake_area_m2 <- 1e6  # 1 km²
+lakes <- st_read(file.path(PATH_ASSETS, "swissTLMRegio_Product_LV95/Hydrography/swissTLMRegio_Lake.shp")) |>
+  st_zm() |>
+  st_transform(2056) |>
+  filter(as.numeric(st_area(geometry)) >= min_lake_area_m2) |>
+  st_intersection(country_ch)
+
+ggplot() +
+    # Switzerland boundary
+    geom_sf(data = country_ch, fill = "lightgray", color = "darkgray") +
+    # Lakes
+    geom_sf(data = lakes, fill = "lightblue", color = "darkgray") +
+    # BDM plot locations
+    geom_point(data = plot_coords,
+            aes(x = XKoord_LV95, y = YKoord_LV95),
+            color = pal[9], alpha = 0.6, size = 1.8) +
+    coord_sf(crs = 2056) +
+    theme(
+    axis.ticks   = element_blank(),
+    axis.text    = element_blank(),
+    panel.grid   = element_blank(),
+    axis.line    = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank())
+
+# Save plot
+ggsave(file.path(DIR_PLOTS, "plot_locations.png"), width = plot_width, height = plot_width * 0.75, dpi = 600)
+```

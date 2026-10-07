@@ -1,0 +1,76 @@
+# Document metadata
+# The short* versions are used for constructing page headers (optional)
+title: "Modelling alpha diversity of Swiss vascular plants and bryophytes with a wide range of environmental predictors"
+shorttitle: "Modelling alpha diversity"
+author: "Wismer C."
+shortauthor: "W.C."
+date: today
+date-format: "D MMMM YYYY"
+
+institut: "Institute of Natural Resource Sciences (IUNR)"
+keywords: "Vascular Plants, Bryophytes, Random Forest, Environmental Predictors, Modelling, Alpha Diversity"
+confidential: false         # adds a "Vertraulich" notice on the title page
+notes-on-ai: "AI tools (GitHub Copilot with mainly Claude Sonnet 4.6, Gemini, Perplexity) were used for coding and during the writing for grammar correction and rephrasing of text passages."
+reproducibility: "All scripts produced in this bachelor thesis analysis are available on my personal GitHub https://github.com/Jaclawi. Due to large file sizes the data is available upon request."
+zhaw-cover-image:
+  src: ./cover.png
+  max-width: 100%          # optional, constrains the image on the title page
+  max-height: 5cm
+thesis-type: "Bachelor Thesis"
+degree-type: "Applied Digital Life Sciences"
+study-year: "2023"
+submission-date: "2026-07-02"
+study-direction: "Digital Environment"
+supervisors:
+  - title: "Prof. Dr."
+    name: "Jürgen Dengler"
+    affiliation: "ZHAW Life Sciences and Facility Management, Wädenswil"
+  - title: "Dr."
+    name: "Stefan Widmer"
+    affiliation: "ZHAW Life Sciences and Facility Management, Wädenswil"
+  - title: ""
+    name: "Nils Ratnaweera"
+    affiliation: "ZHAW Life Sciences and Facility Management, Wädenswil"
+
+format:
+  # Typst PDF format (ZHAW LSFM)
+  zhaw-lsfm-typst:
+    typst-opts: "--root ../"
+    keep-typ: true        # keep intermediate .typ for debugging — remove once numbering is fixed
+    fontsize: 10pt
+    papersize: a4
+    columns: 2
+    section-numbering: "1.1."
+    number-depth: 2
+    toc-depth: 2
+    toc: false
+    execute:
+      echo: false
+      warning: false
+      error: true
+  
+  # HTML format (ZHAW LSFM)
+  zhaw-lsfm-html: 
+    toc: true
+    number-sections: true
+    execute:
+      echo: false
+      warning: false
+      error: true
+    css: 
+      - zhaw-html.css
+
+# Cross-reference settings: disable per-chapter figure numbering
+crossref:
+  chapters: false
+
+# Bibliography and references
+reference-section-title: References
+bibliography: bibliography.bib
+link-citations: true
+csl: https://www.zotero.org/styles/apa
+
+# Render instructions:
+# To PDF: quarto render index.qmd --to zhaw-lsfm-typst
+# To HTML: quarto render index.qmd --to zhaw-lsfm-html
+# To both: quarto render index.qmd

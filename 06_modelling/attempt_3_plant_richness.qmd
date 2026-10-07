@@ -1,0 +1,130 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load plant model data
+plant_data <- readRDS(PATH_MDL3_PLANT_DATA)
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)
+```
+
+# Data preparation
+## Remove target column and plot ID
+```{r}
+# Remove year and ID columns
+plant_data <- plant_data |>
+  dplyr::select(-yearPl, -aID_STAO)
+
+dim(plant_data) # 1442 x 21
+```
+
+## CV model using best hyperparameters
+The best hyperparameters are essentially the default ones, thus the CV model is run again with the standard parameters to get a more stable estimate of performance across all folds and repeats.
+```{r}
+# Set best hyperparameters
+best_mtry <- floor(sqrt(ncol(plant_data)))
+best_min_node_size <- 3
+
+train_control <- caret::trainControl(
+  method          = "repeatedcv",
+  number          = 5,
+  repeats         = 10,
+  savePredictions = "all",
+  returnResamp    = "all"
+)
+
+# Fit CV model with best hyperparameters to get performance metrics across all folds/repeats
+set.seed(123)
+rf_plant_cv_std <- caret::train(
+  richness_plant ~ .,
+  data        = plant_data,
+  method      = "ranger",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = best_mtry,
+    splitrule     = "variance",
+    min.node.size = best_min_node_size
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+rf_plant_cv_std
+
+# Manual summary across all folds/repeats with standard parameters
+resamp_std <- rf_plant_cv_std$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp_std[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp_std[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+#           metric       mean         sd
+# RMSE         RMSE 12.0593867 0.37903048
+# Rsquared Rsquared  0.3772731 0.03807211
+# MAE           MAE  9.6728532 0.31332123
+
+# Save the CV model and results
+saveRDS(rf_plant_cv_std, file = file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_std_cv.rds"))
+write.csv(rf_plant_cv_std$results, file = file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_std_cv_results.csv"), row.names = FALSE)
+```
+
+# Fit final model using all data
+```{r}
+# Fit final model using all data with best hyperparameters
+rf_plant_final <- ranger::ranger(
+  formula     = richness_plant ~ .,
+  data        = plant_data,
+  num.trees   = 500,
+  mtry        = best_mtry,
+  min.node.size = best_min_node_size,
+  importance   = "permutation",
+  num.threads = max(1, parallel::detectCores() - 1),
+  write.forest = TRUE,
+  keep.inbag  = TRUE,
+  oob.error   = TRUE,
+  verbose     = TRUE,
+  seed        = 123
+)
+
+rf_plant_final
+# OOB prediction error (MSE):       146.8082 
+# R squared (OOB):                  0.3636318 
+
+# Save final model
+saveRDS(rf_plant_final, file = file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_final_model.rds"))
+```
+
+## Variable importance
+```{r}
+# Extract variable importance p-values via Altmann permutation test
+set.seed(123)
+imp_pvals <- ranger::importance_pvalues(
+  rf_plant_final,
+  method            = "altmann",
+  formula           = richness_plant ~ .,
+  data              = plant_data,
+  num.permutations  = 100,
+  num.threads       = max(1, parallel::detectCores() - 1),
+  verbose           = TRUE,
+)
+
+var_importance <- as.data.frame(imp_pvals) |>
+  tibble::rownames_to_column("variable") |>
+  dplyr::arrange(pvalue)
+
+var_importance
+
+# Save variable importance
+write.csv(var_importance, file = file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_variable_importance.csv"), row.names = FALSE)
+```

@@ -1,0 +1,7 @@
+# Report related files
+/.quarto/
+**/*.quarto_ipynb
+/_extensions/
+blue-citations.lua
+testing_rendering/
+derelict/

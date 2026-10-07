@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Wismer C.">
+<meta name="dcterms.date" content="2026-07-01">
+<meta name="keywords" content="Vascular Plants, Bryophytes, Random Forest, Environmental Predictors, Modelling, Alpha Diversity">
+
+<title>Modelling alpha diversity of Swiss vascular plants and bryophytes with a wide range of environmental predictors</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for citations */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+  margin-bottom: 0em;
+}
+.hanging-indent div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}</style>
+
+
+<script src="index_files/libs/clipboard/clipboard.min.js"></script>
+<script src="index_files/libs/quarto-html/quarto.js" type="module"></script>
+<script src="index_files/libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="index_files/libs/quarto-html/popper.min.js"></script>
+<script src="index_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="index_files/libs/quarto-html/anchor.min.js"></script>
+<link href="index_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="index_files/libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="index_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="index_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="index_files/libs/bootstrap/bootstrap-efbb37e9afcc02144ebbc7afd12a776f.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="_extensions/zhaw-lsfm/zhaw-lsfm/zhaw-html.css">
+<link rel="stylesheet" href="zhaw-html.css">
+</head>
+
+<body class="quarto-light">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#abstract" id="toc-abstract" class="nav-link active" data-scroll-target="#abstract"><span class="header-section-number">1</span> Abstract</a></li>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link" data-scroll-target="#introduction"><span class="header-section-number">2</span> Introduction</a></li>
+  <li><a href="#material-and-methods" id="toc-material-and-methods" class="nav-link" data-scroll-target="#material-and-methods"><span class="header-section-number">3</span> Material and Methods</a>
+  <ul class="collapse">
+  <li><a href="#study-area" id="toc-study-area" class="nav-link" data-scroll-target="#study-area"><span class="header-section-number">3.1</span> Study Area</a></li>
+  <li><a href="#species-data" id="toc-species-data" class="nav-link" data-scroll-target="#species-data"><span class="header-section-number">3.2</span> Species Data</a></li>
+  <li><a href="#geodata" id="toc-geodata" class="nav-link" data-scroll-target="#geodata"><span class="header-section-number">3.3</span> Geodata</a>
+  <ul class="collapse">
+  <li><a href="#acquisition" id="toc-acquisition" class="nav-link" data-scroll-target="#acquisition"><span class="header-section-number">3.3.1</span> Acquisition</a></li>
+  <li><a href="#geodata-processing" id="toc-geodata-processing" class="nav-link" data-scroll-target="#geodata-processing"><span class="header-section-number">3.3.2</span> Geodata Processing</a></li>
+  <li><a href="#variable-extraction" id="toc-variable-extraction" class="nav-link" data-scroll-target="#variable-extraction"><span class="header-section-number">3.3.3</span> Variable extraction</a></li>
+  <li><a href="#post-extraction-processing" id="toc-post-extraction-processing" class="nav-link" data-scroll-target="#post-extraction-processing"><span class="header-section-number">3.3.4</span> Post-extraction processing</a></li>
+  </ul></li>
+  <li><a href="#dataset-construction" id="toc-dataset-construction" class="nav-link" data-scroll-target="#dataset-construction"><span class="header-section-number">3.4</span> Dataset Construction</a>
+  <ul class="collapse">
+  <li><a href="#species-richness-cross-sectional-dataset" id="toc-species-richness-cross-sectional-dataset" class="nav-link" data-scroll-target="#species-richness-cross-sectional-dataset"><span class="header-section-number">3.4.1</span> Species Richness Cross-sectional Dataset</a></li>
+  <li><a href="#species-richness-change-dataset" id="toc-species-richness-change-dataset" class="nav-link" data-scroll-target="#species-richness-change-dataset"><span class="header-section-number">3.4.2</span> Species Richness Change Dataset</a></li>
+  </ul></li>
+  <li><a href="#modelling-approach" id="toc-modelling-approach" class="nav-link" data-scroll-target="#modelling-approach"><span class="header-section-number">3.5</span> Modelling Approach</a></li>
+  </ul></li>
+  <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results"><span class="header-section-number">4</span> Results</a></li>
+  <li><a href="#discussion" id="toc-discussion" class="nav-link" data-scroll-target="#discussion"><span class="header-section-number">5</span> Discussion</a>
+  <ul class="collapse">
+  <li><a href="#models-of-species-richness-1" id="toc-models-of-species-richness-1" class="nav-link" data-scroll-target="#models-of-species-richness-1"><span class="header-section-number">5.1</span> Models of species richness</a></li>
+  <li><a href="#models-of-species-richness-change-1" id="toc-models-of-species-richness-change-1" class="nav-link" data-scroll-target="#models-of-species-richness-change-1"><span class="header-section-number">5.2</span> Models of species richness change</a></li>
+  <li><a href="#methodological-limitations" id="toc-methodological-limitations" class="nav-link" data-scroll-target="#methodological-limitations"><span class="header-section-number">5.3</span> Methodological limitations</a></li>
+  <li><a href="#data-limitations-and-uncertainty" id="toc-data-limitations-and-uncertainty" class="nav-link" data-scroll-target="#data-limitations-and-uncertainty"><span class="header-section-number">5.4</span> Data Limitations and uncertainty</a></li>
+  </ul></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion"><span class="header-section-number">6</span> Conclusion</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">7</span> References</a></li>
+  <li><a href="#appendix" id="toc-appendix" class="nav-link" data-scroll-target="#appendix"><span class="header-section-number">8</span> Appendix</a>
+  <ul class="collapse">
+  <li><a href="#correlation-matrices" id="toc-correlation-matrices" class="nav-link" data-scroll-target="#correlation-matrices"><span class="header-section-number">8.1</span> Correlation Matrices</a></li>
+  <li><a href="#model-stability" id="toc-model-stability" class="nav-link" data-scroll-target="#model-stability"><span class="header-section-number">8.2</span> Model Stability</a></li>
+  <li><a href="#prediction-maps" id="toc-prediction-maps" class="nav-link" data-scroll-target="#prediction-maps"><span class="header-section-number">8.3</span> Prediction maps</a></li>
+  </ul></li>
+  </ul>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="index.pdf"><i class="bi bi-file-pdf"></i>Typst (zhaw-lsfm)</a></li></ul></div></nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<h1 class="title">Modelling alpha diversity of Swiss vascular plants and bryophytes with a wide range of environmental predictors</h1>
+
+
+
+<section id="abstract" class="level1" data-number="1">
+<h1 data-number="1"><span class="header-section-number">1</span> Abstract</h1>
+
+</section>
+<section id="introduction" class="level1" data-number="2">
+<h1 data-number="2"><span class="header-section-number">2</span> Introduction</h1>
+<!--
+(Biodiversity loss, cardinale 2012)
+(Its impact, pecl 2017)
+(The importance of species richness modelling, ferrier 2002)
+(Conceptually species richness modelling, ferrier and guisan 2006 von steinmann 2009, ist eigentlich eher ein review, aber gut als referenz)
+(Predictive Modelling relies on niche theory, austin 2002 von Steinmann 2009, ist eigentlich eher eine rüge)
+(More Heterogeneous environments lead to more diversity, stein 2014)
+(Interplay between biotic and abiotic, krebs 2014)
+(Energy and water availability, currie 1991 hawkins 2003)
+(Modelling results in complex response curves, oksanen 2002)
+(Swiss Biodiversity Monitoring, weber 2004)
+(Prior studies done with BDM data, zellweger 2015, zellweger 2016, viguesjorba 2025...)
+
+(Zimmerman 2000 predictive habitat distribution models nehme ich als kritik und um rechtfertigung für die Nutzung von RF)
+-->
+<!--Biodiversity and loss-->
+<p>Biodiversity loss is one of the most pressing global environmental challenges of our time <span class="citation" data-cites="cardinaleBiodiversityLossIts2012b">(<a href="#ref-cardinaleBiodiversityLossIts2012b" role="doc-biblioref">Cardinale et al., 2012</a>)</span>. <!--Declinig richness and its effects--> A decline and or redistribution of biodiversity through climatic changes leads to reduction of ecosystem functioning <span class="citation" data-cites="peclBiodiversityRedistributionClimate2017a">(<a href="#ref-peclBiodiversityRedistributionClimate2017a" role="doc-biblioref">Pecl et al., 2017</a>)</span>. <!--Mitigate the crisis and modelling biodiversity--> To deal with this challenge, it is important to have predictive models of biodiversity patterns and their drivers. They help to understand where species occur and why they are changing across landscapes and thus can inform conservation planning and management decisions to mitigate biodiversity loss <span class="citation" data-cites="ferrierMappingSpatialPattern2002">(<a href="#ref-ferrierMappingSpatialPattern2002" role="doc-biblioref">Ferrier, 2002</a>)</span>. <!--Species richness, modelling and niche theory--> Among the many aspects of biodiversity, species richness is a widely modelled metric to quantify and communicate biodiversity patterns. Conceptually it can be modelled at the individual level or at the community level <span class="citation" data-cites="ferrierSpatialModellingBiodiversity2006">(<a href="#ref-ferrierSpatialModellingBiodiversity2006" role="doc-biblioref">Ferrier &amp; Guisan, 2006</a>)</span>. The theoretical foundation for predicting species richness relies on niche theory, which suggests that species distribution and communities are driven by individual species and their responses to environmental gradients <span class="citation" data-cites="austinSpatialPredictionSpecies2002">(<a href="#ref-austinSpatialPredictionSpecies2002" role="doc-biblioref">Austin, 2002</a>)</span>. <!--Broad spatial scales and factors influencing species richness--> At broad spatial scales, these gradients are primarily affected by climate, especially energy and water availability, with diversity typically peaking in warm, moist environments where photosynthetic productivity is highest <span class="citation" data-cites="currieEnergyLargeScalePatterns1991 hawkinsENERGYWATERBROADSCALE2003">(<a href="#ref-currieEnergyLargeScalePatterns1991" role="doc-biblioref">Currie, 1991</a>; <a href="#ref-hawkinsENERGYWATERBROADSCALE2003" role="doc-biblioref">Hawkins et al., 2003</a>)</span>. At finer scales, topographic complexity, soil chemistry, disturbance regimes, and land usage by humans interact with the climatic factors to shape local richness patterns with greater heterogeneity generally leading to higher species richness <span class="citation" data-cites="steinEnvironmentalHeterogeneityUniversal2014">(<a href="#ref-steinEnvironmentalHeterogeneityUniversal2014" role="doc-biblioref">Stein et al., 2014</a>)</span>. <!--Interplay between biotic and abiotic factors and response curves--> Furthermore, the interplay between biotic and abiotic factors create complex dynamics that must be accounted for in ecological modelling <span class="citation" data-cites="krebsEcologyExperimentalAnalysis2014b">(<a href="#ref-krebsEcologyExperimentalAnalysis2014b" role="doc-biblioref">Krebs, 2014</a>)</span>. With individuals and communities responding to these environmental gradients along response curves which are often not simple hump-shaped curves but rather more complex due to stressors such as climate change <span class="citation" data-cites="oksanenContinuumTheoryRevisited2002">(<a href="#ref-oksanenContinuumTheoryRevisited2002" role="doc-biblioref">Oksanen &amp; Minchin, 2002</a>)</span>. <!--BDM and its studies--> Due to the importance of understanding biodiversity patterns and the reliance on high-quality data a Swiss nationwide biodiversity monitoring program (BDM) was established in 2001 to systematically track biodiversity indicators across the country <span class="citation" data-cites="weberScaleTrendsSpecies2004">(<a href="#ref-weberScaleTrendsSpecies2004" role="doc-biblioref">Weber et al., 2004</a>)</span>. Several studies have already worked with data from this program to model diversity. <span class="citation" data-cites="wohlgemuthModellingVascularPlant2008">Wohlgemuth et al. (<a href="#ref-wohlgemuthModellingVascularPlant2008" role="doc-biblioref">2008</a>)</span> used the BDM Z7 indicator which is a coarse 1 km² sample network to produce nationwide richness maps for vascular plants. <span class="citation" data-cites="steinmannModellingPlantSpecies2009">Steinmann et al. (<a href="#ref-steinmannModellingPlantSpecies2009" role="doc-biblioref">2009</a>)</span> used the finer scale Z9 indicator with its 10 m² permanent plots and modelled plant species richness across Switzerland focusing on non-urban areas. <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span> used a subset of the Z9 plots located in temperate forest environments to understand the contributions of various predictors on species richness within forests for both plants and bryophytes. In a follow-up study <span class="citation" data-cites="zellwegerEnvironmentalPredictorsSpecies2016">Zellweger et al. (<a href="#ref-zellwegerEnvironmentalPredictorsSpecies2016" role="doc-biblioref">2016</a>)</span> then used the coarser Z7 indicator focusing on forests and plants. Finally and most recently <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a">Vigués Jorba et al. (<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">2025</a>)</span> examined the response of different taxa and their taxonomic, functional and phylogenetic diversity to environmental factors also within forests.</p>
+<!--Research gap-->
+<p>Despite the rich and high quality dataset at hand no study was done using all BDM Z9 plots to create a model explaining species richness for bryophytes and vascular plants across Switzerland. A in-depth look at the differences between the two taxonomic groups and their response curves to environmental factors with non-parametric models, such as Random Forests, has not yet been done. Additionally the temporal structure of the dataset has not yet been paired with environmental data to understand species richness change over time and new environmental data now allows for a more up to date analysis. To address these gaps, I want to take a closer look at the following research questions: <br></p>
+<!--Research questions selection-->
+<ol type="I">
+<li>Which environmental variables act as the most significant predictors of species richness and how does their explanatory behaviour differ across bryophytes and vascular plants? <br></li>
+</ol>
+<ol start="2" type="i">
+<li>Which environmental factors constitute significantly to species richness changes in recent years and how does their explanatory behaviour differ across bryophytes and vascular plants?</li>
+</ol>
+</section>
+<section id="material-and-methods" class="level1" data-number="3">
+<h1 data-number="3"><span class="header-section-number">3</span> Material and Methods</h1>
+<section id="study-area" class="level2" data-number="3.1">
+<h2 data-number="3.1" class="anchored" data-anchor-id="study-area"><span class="header-section-number">3.1</span> Study Area</h2>
+<!--Study Area, same text as in my previous work-->
+<p>The study area encompasses the entire country of Switzerland, which is located in Central Europe. Switzerland covers an area of approximately 41’290 <span class="math inline">\(\text{km}^2\)</span> and is characterized by diverse landscapes, including the Swiss Alps, the Swiss Plateau, and the Jura Mountains. The country has a temperate climate with distinct seasons, ranging from cold winters to warm summers. Between 1991 and 2020 the average annual temperature was 5.8 °C. The highest annual precipitation occurs in the Alpine regions with about 2’000mm, while the northern plateau gets between 1’000mm and 1’500mm of annual precipitation <span class="citation" data-cites="federalofficeofmeteorologyandclimatologymeteoswissClimateSwitzerlandMeteoSwissn.d">(<a href="#ref-federalofficeofmeteorologyandclimatologymeteoswissClimateSwitzerlandMeteoSwissn.d" role="doc-biblioref">Federal Office of Meteorology and Climatology MeteoSwiss, n.d</a>)</span>. Switzerland is known for its variety of ecosystems such as forests, grasslands, wetlands, and alpine habitats that support a wide range of plant and animal species <span class="citation" data-cites="delarzeLebensraeumeSchweizOekologie2015">(<a href="#ref-delarzeLebensraeumeSchweizOekologie2015" role="doc-biblioref">Delarze et al., 2015</a>)</span>. The country’s topography varies significantly, with elevations ranging from lowland areas to high mountain peaks, influencing local climate conditions and biodiversity patterns.</p>
+</section>
+<section id="species-data" class="level2" data-number="3.2">
+<h2 data-number="3.2" class="anchored" data-anchor-id="species-data"><span class="header-section-number">3.2</span> Species Data</h2>
+<!--Explain species data used, also similar to previous work-->
+<p>In my analysis I used the Z9 field data from the Biodiversity Monitoring Switzerland BDM <span class="citation" data-cites="weberScaleTrendsSpecies2004">(<a href="#ref-weberScaleTrendsSpecies2004" role="doc-biblioref">Weber et al., 2004</a>)</span> which consist of approximately 1’600 circular 10 <span class="math inline">\(m^2\)</span> permanent plots on land, spread across Switzerland in a regular grid with a spacing of 6km in North South and 4km in East West direction between each plot. The centres of these plots are marked with a magnet buried in the upper surface which allows for precise relocation during each survey. If a magnet could not be buried, a steel pin or colour marker was used instead. These plots were surveyed since 2001 by skilled botanists using a staggered approach, meaning that in each year a fifth of the entire sample plots were surveyed. Thus each plot is surveyed once every five years. This levels off extreme annual fluctuations while still allowing for up-to-date reporting <span class="citation" data-cites="bdmcoordinationofficeSwissBiodiversityMonitoring2014a">(<a href="#ref-bdmcoordinationofficeSwissBiodiversityMonitoring2014a" role="doc-biblioref">BDM Coordination Office, 2014</a>)</span>. I analyzed all of the data points even when no bryophytes and or vascular plant species were found during the survey. Plots which were not accessible due to them being situated on water bodies or in inaccessible alpine regions were already excluded when receiving the data. Across all survey years a total of 1449 unique plots were visited at least once (<a href="#fig-spatial-distribution" class="quarto-xref">Figure&nbsp;1</a>). Using this data the per-plot and year alpha richness was computed separately for both taxonomic groups from the raw BDM survey records. The resulting richness tables contained 7’105 surveys for bryophytes and 7’137 surveys for vascular plants.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-spatial-distribution" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-spatial-distribution-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/plot_locations.png" class="img-fluid figure-img" style="width:100.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-spatial-distribution-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: Spatial distribution of the 10 <span class="math inline">\(m^2\)</span> survey plots on a regular grid across Switzerland.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="geodata" class="level2" data-number="3.3">
+<h2 data-number="3.3" class="anchored" data-anchor-id="geodata"><span class="header-section-number">3.3</span> Geodata</h2>
+<section id="acquisition" class="level3" data-number="3.3.1">
+<h3 data-number="3.3.1" class="anchored" data-anchor-id="acquisition"><span class="header-section-number">3.3.1</span> Acquisition</h3>
+<!--Mention: source, data acquisition, timespan, resolution, coordinate system-->
+<!--Climate-->
+<p>Monthly minimum and maximum temperature as well as monthly precipitation data were obtained from MeteoSwiss <span class="citation" data-cites="StartseiteMeteoSchweiz">(<a href="#ref-StartseiteMeteoSchweiz" role="doc-biblioref"><em><span>Startseite - MeteoSchweiz</span></em>, n.d.</a>)</span> covering the period of 1971–2023. They were downloaded at a resolution of 1km and were present as GeoTIFF files in EPSG:2056. Monthly direct solar irradiation layers were additionally obtained from MeteoSwiss as GeoTiff with the same resolution covering the period of 2004–2021 in EPSG:4326.<!--Topography--> Topographic raw data was obtained from the Federal Office of Topography (swisstopo) in the form of a nationwide elevation Model at 25m resolution downloaded directly from swisstopo <span class="citation" data-cites="swisstopo2010dhm25">(<a href="#ref-swisstopo2010dhm25" role="doc-biblioref"><span class="nocase">swisstopo</span>, 2010</a>)</span>. The data were downloaded as ASCII grid files in the older Swiss coordinate system EPSG:21781. <!--Vegetation-Structure/Habitat--> Habitat data were obtained from EnviDat by the Swiss Federal Institute for Forest, Snow and Landscape Research (WSL) in form of the Swiss habitat map v1_2 2025 <span class="citation" data-cites="the-habitat-map-of-switzerland-v1_2-2025">(<a href="#ref-the-habitat-map-of-switzerland-v1_2-2025" role="doc-biblioref">Price et al., 2025</a>)</span>, a polygon vector layer in EPSG:2056 classifying habitats into 9 first level and 32 second level classes according to <span class="citation" data-cites="delarzeLebensraeumeSchweizOekologie2015">Delarze et al. (<a href="#ref-delarzeLebensraeumeSchweizOekologie2015" role="doc-biblioref">2015</a>)</span>. A Vegetation height map <span class="citation" data-cites="ginzler2021vegetationheightmodelnfi">(<a href="#ref-ginzler2021vegetationheightmodelnfi" role="doc-biblioref">Ginzler, 2021</a>)</span> was obtained from the 2021 national stereo vegetation height model at 2m resolution, downloaded also from EnviDat by WSL as a GeoTIFF in EPSG:2056. <!--Soil--> Soil data were obtained from the Kompetenzzentrum Boden (KoBo) national soil service provider <span class="citation" data-cites="kobo_bodenportal">(<a href="#ref-kobo_bodenportal" role="doc-biblioref">Kompetenzzentrum Boden (KOBO), 2026</a>)</span>. It provides raster layers as GeoTIFFs in EPSG:2056 in 30m resolution for various soil properties. Humus content, cation exchange capacity (KAK), pH, sand fraction, silt fraction, and clay fraction were available in three depth profiles (0–30, 30–60, 60–120 cm), while soil organic carbon stock was available in just one (0-120 cm). <!--Land-Use--> Land use data was obtained from the Swiss Arealstatistik, provided by the Federal Statistical Office <span class="citation" data-cites="bfs_geostat_1979_85_arealstatistik">(<a href="#ref-bfs_geostat_1979_85_arealstatistik" role="doc-biblioref">BFS GEOSTAT, 1985</a>)</span>, which classifies land cover on a regular point grid across Switzerland at 100m spacing, available in EPSG:2056 as a vector layer. It provides multiple classification levels for different analytical purposes. Additionally a grassland mowing intensity map for the year 2021 was obtained at 10m resolution from WSL <span class="citation" data-cites="grassland-use-intensity-maps-for-switzerland-2023">(<a href="#ref-grassland-use-intensity-maps-for-switzerland-2023" role="doc-biblioref">Weber et al., 2023</a>)</span>. It was available as a GeoTiff in EPSG:32632 and contained values representing the modelled number of mowing events per year.</p>
+</section>
+<section id="geodata-processing" class="level3" data-number="3.3.2">
+<h3 data-number="3.3.2" class="anchored" data-anchor-id="geodata-processing"><span class="header-section-number">3.3.2</span> Geodata Processing</h3>
+<!--Bioclim calculations, aggregations, packages used, output CRS and Resolution-->
+<p>To capture the climatic conditions relevant to each survey year, 19 bioclimatic variables (BIO1–BIO19) were computed using a 30-year sliding window approach with R <span class="citation" data-cites="rcoreteamLanguageEnvironmentStatistical2026">(<a href="#ref-rcoreteamLanguageEnvironmentStatistical2026" role="doc-biblioref">R Core Team, 2026</a>)</span> and the packages <code>terra</code> <span class="citation" data-cites="hijmansTerraSpatialData2026">(<a href="#ref-hijmansTerraSpatialData2026" role="doc-biblioref">Hijmans et al., 2026</a>)</span> and <code>dismo</code> <span class="citation" data-cites="hijmansDismoSpeciesDistribution2024">(<a href="#ref-hijmansDismoSpeciesDistribution2024" role="doc-biblioref">Hijmans et al., 2024</a>)</span>. For each year between 2001 and 2021, the monthly averages over the preceding 30 years were first calculated for the maximum and minimum temperature and the mean precipitation, the bioclimatic variables were then derived from these averages using the <code>biovars</code> function from <code>dismo</code>. This produces a time series of bioclimatic layers as GeoTIFFs in the original resolution of 1 km. For Radiation the data for a full 30-year window was not available and thus the yearly average over a 15 year window (2004–2021) was computed to derive a single climatic variable representing radiation conditions. Beforehand the data was originally in EPSG:4326 and was reprojected to EPSG:2056 using <code>terra</code> prior to averaging and saving as GeoTIFFs also in 1 km resolution. <!--Slope-aspect-twi-tpi calculations, packages used, output CRS and Resolution--> The Digital Elevation Model (DEM) was originally in the older Swiss coordinate system (EPSG:21781) and was reprojected to EPSG:2056 again using <code>terra</code>. From the reprojected DEM, the slope, aspect and Topographic Position Index (TPI) were derived keeping the 25m resolution using the <code>terrain</code> function, with slope and aspect expressed in degrees. The Topographic Wetness Index (TWI) was computed separately using the R package <code>whitebox</code> <span class="citation" data-cites="lindsayWhiteboxGATCase2016">(<a href="#ref-lindsayWhiteboxGATCase2016" role="doc-biblioref">Lindsay, 2016</a>)</span>. Prior to TWI calculation, artificial flow sinks were removed from the DEM using a least-cost depression breaching algorithm (<code>wbt_breach_depressions_least_cost</code>). A slope raster was then temporarly derived from the sink-free DEM and clamped to a minimum of 0.001° to prevent infinite TWI values in flat terrain resulting in false values. The temporary specific catchment area layer was then calculated using the D-Infinity flow accumulation algorithm, and TWI was derived from the catchment area and slope using <code>wbt_wetness_index</code>. Only the final TWI layer was saved as GeoTIFFs in the original 25m resolution. <!--Creation of Arealstatistik layers--> The gathered land cover classification layer (Arealstatistik) is distributed as a vector point layer where each point represents the centre of a 100 <span class="math inline">\(\times\)</span> 100 m cell. To enable spatial extraction the three classification levels LU_4, LU_10, and AS_4 were each rasterized to a 100 m resolution grid in EPSG:2056 using <code>rasterize</code>. A template raster was constructed from the bounding box of the point layer, extended by 50 m (half the cell size) on each side so that the survey points align with cell centres rather than cell edges. Each classification column was then placed into this template individually and saved as a GeoTIFF. <!--Reprojection of grassland use intensity map--> The grassland use intensity map was originally provided in EPSG:32632 and was reprojected to EPSG:2056 using <code>terra</code> and saved as a GeoTIFF in the original 10m resolution. Due to it being a rather large dataset, the grassland use intensity map was reprojected using a High Performance Computing cluster (HPC) with larger amounts of computing power available.</p>
+</section>
+<section id="variable-extraction" class="level3" data-number="3.3.3">
+<h3 data-number="3.3.3" class="anchored" data-anchor-id="variable-extraction"><span class="header-section-number">3.3.3</span> Variable extraction</h3>
+<!--Extraction of per plot environmental variables-->
+<p>Static Raster layers including topography, soil, land use, vegetation height, and mowing intensity were extracted at each BDM plot location using <code>extract</code>. The per plot habitat type was extracted by overlaying the plot coordinates with the habitat map using <code>st_intersection</code> from the sf package <span class="citation" data-cites="pebesmaSimpleFeaturesStandardized2018a">(<a href="#ref-pebesmaSimpleFeaturesStandardized2018a" role="doc-biblioref">Pebesma, 2018</a>)</span>. The bioclimatic variables were extracted separately by extracting the per plot and year values from the GeoTIFFs, resulting in a long-format panel with one row per plot times the end years covering 2001–2021.</p>
+</section>
+<section id="post-extraction-processing" class="level3" data-number="3.3.4">
+<h3 data-number="3.3.4" class="anchored" data-anchor-id="post-extraction-processing"><span class="header-section-number">3.3.4</span> Post-extraction processing</h3>
+<p>Ranger’s Importance p-values method used later in the analysis required that all predictor variables to be without any missing values. This meant I had to deal with missing values which were present in the KoBo soil, vegetation height, and mowing intensity rasters. <!--imputation of soil extractions--> KoBo soil rasters did not provide complete national coverage because the maps are built from exposed soil pixels only <span class="citation" data-cites="stumpfSpatiotemporalLandUse2018">(<a href="#ref-stumpfSpatiotemporalLandUse2018" role="doc-biblioref">Stumpf et al., 2018</a>)</span>. Thus for about a fifth of the plots, which are located in urban sealed areas or in mountainous regions, no valid raster values were extractable. For these plots, missing values were gap-filled by assigning the value of the nearest valid raster pixel. This imputation of missing values was preferred over leaving them as “Not-a-Number” (<code>NaN</code>) or imputing them with the mean or median of the raster layer as I assumed that the nearest valid pixel is more likely to represent the local soil conditions of the plot. The gap-filling procedure was implemented using an expanding search radius until a valid pixel was found, allowing for the imputation of missing values using <code>nearest</code>. <!--Setting Vegetation height to 0 where NaN--> The vegetation height raster contained <code>NaN</code> values in areas which were not computed. These <code>NaN</code> values were set to zero to represent the absence of vegetation height in these locations. The assumption here being that the <code>NaN</code> values were not due to data errors but rather reflected true zero vegetation height, such as in rocky terrain or low grassland areas. <!--Setting mowing intensity to to 0 where NaN--> Similarly with mowing intensity, simply imputing missing values with often used mean would most likely skew the interpretation. Thus Mowing intensity <code>NaN</code> values, indicating locations outside the grassland mask, were also set to zero to represent no mowing events. <!--Factorising mowing intensity--> Mowing intensity was then binned into four categories (No Mowing, Low, Medium, High) based on the number of mowing events per year. No-Mowing was defined as 0 events per year, Low as 1–2 events, Medium as 3–4 events, and High as 5 or more events. <!--Factorising aspect--> Aspect was discretised as well, into eight cardinal directions (N, NE, E, SE, S, SW, W, NW). This was done after calculating the aspect raster from the DEM. The resulting categorical variables were then converted to factors.</p>
+</section>
+</section>
+<section id="dataset-construction" class="level2" data-number="3.4">
+<h2 data-number="3.4" class="anchored" data-anchor-id="dataset-construction"><span class="header-section-number">3.4</span> Dataset Construction</h2>
+<section id="species-richness-cross-sectional-dataset" class="level3" data-number="3.4.1">
+<h3 data-number="3.4.1" class="anchored" data-anchor-id="species-richness-cross-sectional-dataset"><span class="header-section-number">3.4.1</span> Species Richness Cross-sectional Dataset</h3>
+<p>For the cross-sectional dataset only the latest survey period was used (2021–2025), meaning that only the most recent survey records for each plot were retained. This resulted in 1’435 bryophyte and 1’442 vascular plant plots with valid richness values. These were then joined with the extracted environmental per plot values by plot ID. The result were two datasets with one row per plot, one column for species richness and 68 columns for the environmental predictors. Because the dimensionality was way to high for the number of observations, a variable selection process was carried out to reduce the number of predictors. Firstly only the first level of the TypoCH habitat classification was retained (9 habitat types) since the second level (32 habitat types) was assumed to be to detailed. Then the Land use classification with 10 classes was dropped in favour of the 4-class classification (1=urban area, 2=agricultural area, 3=forest, 4=unproductive). The aspect layer could be dropped as this was turned into a factor and so could the mowing intensity. The elevation was not included as it was assumed to be very strongly correlated with the bioclimatic variables and would mask their effects. Then only the top level of the soil variables was retained (0–30 cm) as <span class="citation" data-cites="goebesStrengthSoilplantInteractions2019">Goebes et al. (<a href="#ref-goebesStrengthSoilplantInteractions2019" role="doc-biblioref">2019</a>)</span> have shown that it leads to the best predictive performance of richness. The silt and clay fractions were dropped as they are dependent on the sand fraction. Similarly to <span class="citation" data-cites="zellwegerEnvironmentalPredictorsSpecies2016">Zellweger et al. (<a href="#ref-zellwegerEnvironmentalPredictorsSpecies2016" role="doc-biblioref">2016</a>)</span>, <span class="citation" data-cites="wohlgemuthModellingVascularPlant2008">Wohlgemuth et al. (<a href="#ref-wohlgemuthModellingVascularPlant2008" role="doc-biblioref">2008</a>)</span> and <span class="citation" data-cites="ellerbrokDeterminantsTerrestrialLimnic2026">Ellerbrok et al. (<a href="#ref-ellerbrokDeterminantsTerrestrialLimnic2026" role="doc-biblioref">2026</a>)</span> I tried to choose bioclimatic variables representing the most ecologically relevant aspects of temperature and precipitation. Meaning that the focus was on temperature and precipitation during the coldest and warmest quarters of the year, as well as temperature seasonality and isothermality. Thus only bioclimatic variables BIO3, BIO4, BIO10, BIO11, BIO18, and BIO19 were retained while the other 13 bioclimatic variables were dropped. All this reduced the number of predictors from 68 to 20. A mixed correlation matrix using pearson for continues variables, polyserial correlation for continuous–ordinal pairs, and polychoric correlation for ordinal–ordinal pairs was computed using <code>hetcor</code> from the package <code>polycor</code> <span class="citation" data-cites="foxPolycorPolychoricPolyserial2025">(<a href="#ref-foxPolycorPolychoricPolyserial2025" role="doc-biblioref">Fox, 2025</a>)</span> to check for collinearity among the remaining predictors. The correlation matrix constructed with the remaining predictors (Appendix)<!--Appendix--> revealed still some strong correlation between the bioclimatic variables. According to <span class="citation" data-cites="boothCheckingBioclimaticVariables2022">Booth (<a href="#ref-boothCheckingBioclimaticVariables2022" role="doc-biblioref">2022</a>)</span> this was deemed fine and thus the final set of 20 predictors entering the model for the cross-sectional attempt is summarized in .</p>
+</section>
+<section id="species-richness-change-dataset" class="level3" data-number="3.4.2">
+<h3 data-number="3.4.2" class="anchored" data-anchor-id="species-richness-change-dataset"><span class="header-section-number">3.4.2</span> Species Richness Change Dataset</h3>
+<p>Based on the variables selected in the cross-sectional dataset a second dataset was constructed to quantify temporal change at each plot.<!--What I did--> For each plot with at least three survey records within the 2001–2020 survey window, a simple linear regression of species richness against survey year was fitted. The latest survey period was not included in this analysis because MeteoSwiss and thus bioclimatic data for the 2021–2025 survey period was not fully available.<!--The target measure--> The slope coefficient (species / year) was the target measure of the rate of richness change.<!--Deriving Bioclim--> Then for the same period the bioclimatic trends were derived from the 21-year bioclimatic panel data. For each of the six retained bioclimatic variables, a per-plot linear regression over 2001–2020 was computed as the rate of climatic change. Additionally, the 2001 bioclimatic snapshot was extracted as a baseline capturing the starting climate conditions at each plot. The change modelling dataset was then assembled by joining the linear regression fitted richness changes, the six bioclimatic changes, the six bioclimatic baselines, and the 14 remaining static environmental predictors (I.e., the full 20-predictor set with the six bioclimatic normals replaced by their trends and baselines) resulting in a total of 26 predictors <!--Dataset size-->with 1’433 valid bryophyte and 1’437 vascular plant plots.</p>
+</section>
+</section>
+<section id="modelling-approach" class="level2" data-number="3.5">
+<h2 data-number="3.5" class="anchored" data-anchor-id="modelling-approach"><span class="header-section-number">3.5</span> Modelling Approach</h2>
+<p>For modelling species richness and species richness change, I used Random Forests (RF) implemented in the R package <code>ranger</code> <span class="citation" data-cites="wrightRangerFastImplementation2017">(<a href="#ref-wrightRangerFastImplementation2017" role="doc-biblioref">Wright &amp; Ziegler, 2017</a>)</span>. RF is a non-parametric ensemble learning method that constructs multiple decision trees during training and outputs the mean prediction of the individual trees. It is robust to collinearity among predictors, less prone to overfitting and can handle high-dimensional data.<!--Hyperparameter Search--> To find suitable hyperparameters for the RF models, a Cross validation on the entire dataset was performed like <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span> did, since the in Machine-Learning often used train-test split was not applicable because the dataset was small and the initial random train-split mainly determined the model performance. This was implemented using the the R package <code>caret</code> <span class="citation" data-cites="kuhnBuildingPredictiveModels2008a">(<a href="#ref-kuhnBuildingPredictiveModels2008a" role="doc-biblioref">Kuhn, 2008</a>)</span> with the <code>ranger</code> method. The hyperparameters tuned included the number of variables randomly sampled as candidates at each split (<code>mtry</code>), the minimum node size (<code>min.node.size</code>).<!--Selecting Hyperparameters--> The resulting hyperparameter combination revealed almost no deviations and thus for simplicity in all models rangers default values of mtry equalling the rounded down square root of the number of predictors and minimum node size of 3 were used. Using these hyperparameters the first constructed bryophyte richness model was checked for stability in regards of the number of trees chosen and based on this 500 trees seemed stable and was chosen for all other models (Appendix).<!--Fit models per Taxon group and dataset--> The final RF models were then fitted using <code>ranger</code> with the selected hyperparameters and 500 trees. The same modelling approach was applied separately for bryophytes and vascular plants, as well as for species richness and species richness change, resulting in a total of four RF models.<!--Understanding RF--> Afterwards the models were interpreted using the variable importance measure based on permutation importance and partial dependence plots for the top predictors.<!--Variable Importance--> The variable importance was computed using the <code>importance_pvalues</code> function from <code>ranger</code>, which provides p-values for the importance scores based on 100 permutation tests.<!--Partial DP--> The partial dependence plots were generated using the <code>partialPlot</code> function from the R package <code>pdp</code> <span class="citation" data-cites="greenwellPdpPackageConstructing2017">(<a href="#ref-greenwellPdpPackageConstructing2017" role="doc-biblioref">Greenwell, 2017</a>)</span>, which shows the marginal effect of a predictor on the response variable while averaging out the effects of other predictors.<!--Extrapolation and predicting using RF--> To produce spatially continuous richness maps for the entirety of Switzerland, the finalised RF richness models for bryophytes and vascular plants richness were applied to a initialized national raster grid at 100 m resolution in EPSG:2056 based on the arealstatistik LU_4 raster. Before assembling the raster stack, the habitat type vector layer was rasterized to 10 m resolution in a separate file. Afterwards a shared predictor stack of all 20 variables was assembled by loading each source raster and resampling it to the grid using <code>resample</code>. Continuous predictors were resampled with bilinear interpolation and categorical predictors (habitat type, land-use class) were resampled using nearest-neighbour assignment to preserve their integer codes. Using the same rules as in training the missing values in the vegetation height and mowing intensity rasters were set to zero and the mowing intensity and aspect were binned into categories. The final raster stack was then passed to the RF models to predict species richness for each pixel using <code>predict</code> and to compute the standard error of the predictions via the infinitesimal jackknife estimator saving 2 GeoTIFF’s for each taxonomic group <span class="citation" data-cites="wagerConfidenceIntervalsRandom2014">(<a href="#ref-wagerConfidenceIntervalsRandom2014" role="doc-biblioref">Wager et al., 2014</a>)</span>. Only the soil layers were restricting the prediction extent, as they did not cover the entire country. <!--Extrapolation on HPC MENTION--> Due to large files sizes and computational power needed this step was also done on a HPC cluster.</p>
+</section>
+</section>
+<section id="results" class="level1" data-number="4">
+<h1 data-number="4"><span class="header-section-number">4</span> Results</h1>
+<section id="models-of-species-richness" class="level4" data-number="4.0.0.1">
+<h4 data-number="4.0.0.1" class="anchored" data-anchor-id="models-of-species-richness"><span class="header-section-number">4.0.0.1</span> Models of species richness</h4>
+<!--Moss CV: 
+#           metric      mean         sd
+# RMSE         RMSE 6.4478985 0.35236466
+# Rsquared Rsquared 0.4705521 0.03723306
+# MAE           MAE 4.7641125 0.20857580-->
+<!--Moss OOB:
+# OOB prediction error (MSE):       41.20176 
+# R squared (OOB):                  0.4702841-->
+<!--Vascular CV:
+#           metric       mean         sd
+# RMSE         RMSE 12.0593867 0.37903048
+# Rsquared Rsquared  0.3772731 0.03807211
+# MAE           MAE  9.6728532 0.31332123
+-->
+<!--Vascular OOB:
+# OOB prediction error (MSE):       146.8082 
+# R squared (OOB):                  0.3636318 
+-->
+<!--Cross-Sectional dataset explaiend-->
+<p>In the cross-sectional dataset during the latest survey period (2021–2025) the average bryophyte species richness across all plots was 9.9 species per 10 <span class="math inline">\(m^2\)</span> (SD = 8.8, range = 0–46), while the mean vascular plant species richness was 23.6 species per 10 <span class="math inline">\(m^2\)</span> (SD = 15.2, range = 0–77).<!--CV Results--> During hyperparameter tuning the result on the test set was highly dependent on the random train-test split, thus as mentioned in the materials and methods section a Cross-validation on the entire dataset was performed. Plant species were less predictable than bryophyte species with a CV mean explained variance (R²) of 0.38 for vascular plants and 0.47 for bryophytes, and standard deviation of 0.04 for both vascular plants and bryophytes. This meant that the prediction performance of the models could vary up to 8 percentage points depending on the random split performed. Also during Cross-validation the mean absolute error (MAE) was 9.7 for vascular plants and 4.8 for bryophytes. Meaning on average the species richness predictions were off by about 10 species for vascular plants and 5 species for bryophytes.<!--Final model Results--> Out of Bag (OOB) Root mean squared error (RMSE) on the final models fitted on the entire dataset was 12.1 for vascular plants and 6.4 for bryophytes, OOB R² of the final RF model was similar to the CV results with an R² of 0.47 for bryophytes and 0.36 for vascular plants.</p>
+<!--Importance of predictors-->
+<p>The most important predictor of bryophyte and plant species richness were the 4 Land use classes (LU_4) by the Arealstatistik (). It was able to explain a large portion of the variance in species richness for both groups, with a percentage decrease in explained variance of 17% for vascular plants and 77% for bryophytes when left out during permutation.<!--Present in both--> The temperatures in the warmest and coldest quarters, the slope, the mowing intensity and the vegetation height were also among the most important predictors for both groups.<!--Differences--> The only difference in the top predictors between the two groups was that for bryophytes the soil organic carbon, the pH value and the solar radiation was also amongst the most important predictors.</p>
+<!--Partial dependence plots continues-->
+<p>Partial dependence plots for the significant continuous predictors of bryophyte and plant species richness reveal<!--Bell curve Temp.--> approximately a bell curve as response for the mean temperature of the warmest quarter (BIO10) and mean temperature of the coldest quarter (BIO11) for both groups ().<!--Veg. height--> Vegetation height revealed a decrease in plant richness with increasing vegetation height whilst for bryophytes the relationship was exactly the opposite. It is to be noted that an artefact from setting the vegetation height <code>NaN</code> values to zero is visible as a spike in the plot at zero vegetation height.<!--Slope--> The slope appears as a important predictor for both groups with a positive relationship for both.<!--Soil Organic Carbon--> Soil organic carbon content (SOC) shows a rapid decline in richness with increasing SOC for bryophytes and a similar response for vascular plants despite not being significant.<!--pH Moss--> Finally, soil pH shows a negative relationship with bryophyte richness whilst vascular plants show the opposite pattern. <!--Partial dependence plots factorial--> For the factorial predictors, the partial dependence plots show that for vascular plants the highest species richness could be found amongst agricultural land followed by urban areas whilst for bryophytes the highest species richness was found in forests followed by unproductive areas ().<!--Mowing intensity--> For mowing intensity it can be seen that plant richness increases with increasing mowing intensity, whilst bryophytes show the opposite pattern.<!--Aspect--> Finally in the Aspect partial dependency once again a contrasting pattern between the two groups could be observed with bryophytes showing the highest richness on south-facing slopes and vascular plants showing the highest richness on north-facing slopes.</p>
+<!--Extrapolation and Prediction maps-->
+<p>The created extrapolated species richness maps for bryophytes and vascular plants show some clear distribution patterns () with higher species richness occurring in pre-alpine regions whilst in the central plateau the richness is lower. The estimated prediction uncertainty maps reveal an overall evenly distributed modelling uncertainty across the country with some higher uncertainty in local patches found in the Jura region and in between the central plateau and the alpine regions ().</p>
+</section>
+<section id="models-of-species-richness-change" class="level4" data-number="4.0.0.2">
+<h4 data-number="4.0.0.2" class="anchored" data-anchor-id="models-of-species-richness-change"><span class="header-section-number">4.0.0.2</span> Models of Species Richness Change</h4>
+<!--Vascular CV:
+#           metric       mean         sd
+# RMSE         RMSE 0.55012252 0.03740239
+# Rsquared Rsquared 0.01322408 0.01107169
+# MAE           MAE 0.38405819 0.01848813
+-->
+<!--Vascular OOB:
+# OOB prediction error (MSE):       0.3067242 
+# R squared (OOB):                  -0.009079647 
+-->
+<!--Moss CV:
+#           metric       mean         sd
+# RMSE         RMSE 0.30365987 0.019473718
+# Rsquared Rsquared 0.02105203 0.013603134
+# MAE           MAE 0.21280288 0.008145288
+-->
+<!--Moss OOB:
+# OOB prediction error (MSE):       0.09278523 
+# R squared (OOB):                  0.008097786 
+-->
+<!--Species richness change dataset explained-->
+<p>In the species richness change dataset, the average change of bryophyte richness change was 0.06 species per year and plot (SD = 0.31, range = -2.03 to 1.94), with vascular plants having the same mean change of 0.06 species per year and plot (SD = 0.55, range = -3.74 to 3.72).<!--CV Results--> The richness change models showed near-zero predictive performance. Cross-validation revealed a mean R² of 0.01 for vascular plants and 0.02 for bryophytes, with standard deviations of 0.01 and 0.01 respectively. The mean absolute error (MAE) was 0.38 species per year for vascular plants and 0.21 species per year for bryophytes, meaning that on average the predicted rate of richness change was off by roughly 0.4 species per year for vascular plants and 0.2 species per year for bryophytes.<!--Final model Results--> The OOB R² of the final models confirmed the poor fit, with values of −0.01 for vascular plants and 0.01 for bryophytes.</p>
+<!--Importance of predictors-->
+<p>The analysis did reveal some significant predictors of bryophyte and plant species richness change with the Land-use class (LU_4) once again being important for both groups (). However this time the most important predictor was the Soil organic carbon stock (SOC) for bryophytes and the baseline temperature of the coldest quarter (BIO11) for vascular plants. <!--Partial dependency plots continueous--> The partial dependence plots for the significant continuous predictors of bryophyte and plant species richness change reveal a faster change rate in places with lower Soil organic carbon content (SOC) for bryophytes, with a similar trend for vascular plants despite not being significant (). Also for bryophytes the change rate is higher in steeper slopes with plants showing an opposite trend and not being significant. Furthermore the change rate was higher for vascular plants with a lower baseline temperature in the coldest quarter (BIO11) and the warmest quarter (BIO10). <!--Partial dependency factorial--> For categorical predictors, only the land use class (LU_4) and the mowing intensity factor were significant predictors of species richness change with the land use class being significant in both whilst the mowing intensity only being significant for vascular plants revealing a faster change rate with increasing mowing intensity ().</p>
+<!--Add a Page break-->
+</section>
+</section>
+<section id="discussion" class="level1" data-number="5">
+<h1 data-number="5"><span class="header-section-number">5</span> Discussion</h1>
+<!--General Work and thoughts-->
+<p>A wide variety of environmental predictors are needed to capture the huge complexity of ecological systems and accurately model the species richness and the changes within them.<!--Patterns found--> I found reoccurring patterns that govern the distribution of species richness for both bryophytes and plant species. Bryophytes were more predictable than vascular plants with a higher explained variance achieved.<!--Differences between taxon groups--> The two groups followed opposite patterns in regards to vegetation height, mowing intensity, land cover as well as soil pH, whilst having similar response curves to climate.<!--Change models--> Predicting the species richness change was not as successful as only a small portion of variance could be explained. It was able to find some significant predictors of change which indicate that faster changes are happening in regions with lower temperatures. But the overall predictive performance was very low and thus the environmental variables that have been found and thus deemed as responsible for the change in species richness must be interpreted with caution.</p>
+<section id="models-of-species-richness-1" class="level2" data-number="5.1">
+<h2 data-number="5.1" class="anchored" data-anchor-id="models-of-species-richness-1"><span class="header-section-number">5.1</span> Models of species richness</h2>
+<section id="model-performance-and-predictive-power" class="level4" data-number="5.1.0.1">
+<h4 data-number="5.1.0.1" class="anchored" data-anchor-id="model-performance-and-predictive-power"><span class="header-section-number">5.1.0.1</span> Model Performance and predictive power</h4>
+<!--Model Performance and predictive power-->
+<p>It is difficult to compare species richness model performances across studies, even to ones using BDM data, due to the data selection processes done. Prior studies often have focused only on subsets of the BDM Z9 plots instead of the entire dataset like I have done and have used different environmental predictor data. <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span> used 410 plots situated in forest regions surveyed between 2004-2008 and have achieved average Cross-validation accuracies of 16.8% for plant species and 24% for bryophyte species. <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a">Vigués Jorba et al. (<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">2025</a>)</span> have also used plots in forested areas and have looked at the survey period between 2017-2021. With their 290 plots selected their models achieved accuracies of 17% for plant species and 41% for bryophytes. <span class="citation" data-cites="steinmannModellingPlantSpecies2009">Steinmann et al. (<a href="#ref-steinmannModellingPlantSpecies2009" role="doc-biblioref">2009</a>)</span> have not used subsets but were for unclear reasons not able to study an entire sampling period and thus only had 421 plots available for modelling. They have achieved and explained variance across all plant species of 28%. Other studies not using BDM data but also doing nationwide richness models have achieved plant richness accuracies of 40-65% in grassland vegetation and 44-47% in forests within Czechia <span class="citation" data-cites="divisekHighresolutionLargeextentMapping2018">Divíšek &amp; Chytrý (<a href="#ref-divisekHighresolutionLargeextentMapping2018" role="doc-biblioref">2018</a>)</span> whilst <span class="citation" data-cites="ellerbrokDeterminantsTerrestrialLimnic2026">Ellerbrok et al. (<a href="#ref-ellerbrokDeterminantsTerrestrialLimnic2026" role="doc-biblioref">2026</a>)</span> were able to explain 55.6% of the variance for the entirety of Germany using larger sampling plots.<!--My Result--> My analysis achieved an explained variance of 36% for vascular plants and 47% for bryophytes, which is consistent with these before mentioned results and does not appear to be an outlier.<!--Why better?--> I assume the slight increase in accuracy compared to other studies using BDM data comes from three factors.<!--Better because collinear--> First I was not as strict in the variable selection process as others, Random Forest can handle collinearity but strictly reducing collinear predictors leads to fewer predictors and thus less information for the model to learn from.<!--Better because more recent data--> Second I have used more recent ecological relevant data such as the soil maps, and grassland use intensity maps. <!--Better because more plots--> And third, I have used the entire dataset instead of carefully selected BDM plots like others have done which might have led to better model performance.<!--Spatial Extrapolation--> The created vascular plant spatial extrapolation maps match well with the one created by <span class="citation" data-cites="steinmannModellingPlantSpecies2009">Steinmann et al. (<a href="#ref-steinmannModellingPlantSpecies2009" role="doc-biblioref">2009</a>)</span> which also shows patches of high species richness in the Jura and pre-alpine region and low species richness in the southern alps as well as the central plateau. It does differ however to <span class="citation" data-cites="wohlgemuthModellingVascularPlant2008">Wohlgemuth et al. (<a href="#ref-wohlgemuthModellingVascularPlant2008" role="doc-biblioref">2008</a>)</span> whose spatial extrapolation using the coarser BDM samples in 1 km resolution shows patches of high species richness even in the southern alps and misses the high species richness patches in the Jura. This difference, as I assume, mainly comes from the different indicator sampling design. It is to be noted that my extrapolation does not take into account the scale of the sampling plots and the spatial extrapolation to larger grain sizes. The extrapolation maps have not been adjusted and so they should be interpreted only as qualitative and not quantitative.</p>
+</section>
+<section id="environmental-implications" class="level4" data-number="5.1.0.2">
+<h4 data-number="5.1.0.2" class="anchored" data-anchor-id="environmental-implications"><span class="header-section-number">5.1.0.2</span> Environmental implications</h4>
+<!--Key environmental predictors of species richness-->
+<p>Predictors that were found to be important for both bryophytes and vascular plants were the land use class (LU_4), the mean temperature of the warmest quarter (BIO10), the mean temperature of the coldest quarter (BIO11), the slope, the mowing intensity and the vegetation height. With their response not following unimodal linear, hump or bell curves indicating that the response can be more complex <span class="citation" data-cites="oksanenContinuumTheoryRevisited2002">(<a href="#ref-oksanenContinuumTheoryRevisited2002" role="doc-biblioref">Oksanen &amp; Minchin, 2002</a>)</span>. The land use class was the most important predictor for both groups. Together with mowing intensity it underlines the impact of human land use in shaping species richness patterns as established by others <span class="citation" data-cites="ellerbrokDeterminantsTerrestrialLimnic2026 newboldGlobalEffectsLand2015">(<a href="#ref-ellerbrokDeterminantsTerrestrialLimnic2026" role="doc-biblioref">Ellerbrok et al., 2026</a>; <a href="#ref-newboldGlobalEffectsLand2015" role="doc-biblioref">Newbold et al., 2015</a>)</span>. Bioclimatic variables were also found as significant and important predictors reflecting the fundamental role that climate plays in shaping species distribution <span class="citation" data-cites="currieEnergyLargeScalePatterns1991 hawkinsENERGYWATERBROADSCALE2003">(<a href="#ref-currieEnergyLargeScalePatterns1991" role="doc-biblioref">Currie, 1991</a>; <a href="#ref-hawkinsENERGYWATERBROADSCALE2003" role="doc-biblioref">Hawkins et al., 2003</a>)</span>. <!--Partial Response and ecological patterns--> The positive relationship found between slope and species richness for both groups are in line with the findings from <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span> which indicates that steeper areas are less affected by humans and provide more microhabitats. The negative relationship between vascular plant richness with the vegetation height and the pH value line up with the findings of <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a">Vigués Jorba et al. (<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">2025</a>)</span>, <span class="citation" data-cites="dembiczDriversPlantDiversity2021">Dembicz et al. (<a href="#ref-dembiczDriversPlantDiversity2021" role="doc-biblioref">2021</a>)</span> and <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span>. It indicates that largely untouched and long standing forest regions with high vegetation height let less light through to the forest floor and thus have lower species richness. This is shown by <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a">Vigués Jorba et al. (<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">2025</a>)</span> who have used canopy transmissivity as a variable in their modelling approach. For bryophytes the opposite was found with a positive relationship with vegetation height and a negative relationship with pH. Showing that for bryophytes the presence of a canopy cover is beneficial for species richness because it provides shade and thus water buffers.</p>
+</section>
+</section>
+<section id="models-of-species-richness-change-1" class="level2" data-number="5.2">
+<h2 data-number="5.2" class="anchored" data-anchor-id="models-of-species-richness-change-1"><span class="header-section-number">5.2</span> Models of species richness change</h2>
+<p>Directly Comparing the results of the species richness change models to prior studies is not possible due to the lack of studies that have used the same dataset and approach. Amongst a few significant predictors I have found that the baseline Bioclimatic variables 10 and 11 were amongst the most important predictors of plant richness changes which is consistent with the cross-sectional richness models. The partial dependancy plot for them show a stronger change in species richness for plots with colder baseline temperatures which could be an indication of climatic changes and the effect on the elevation distribution with species moving from warmer to colder regions <span class="citation" data-cites="freemanExpandingShiftingShrinking2018a">Freeman et al. (<a href="#ref-freemanExpandingShiftingShrinking2018a" role="doc-biblioref">2018</a>)</span>. This is supported by <span class="citation" data-cites="haberlinRecentBiodiversityChanges2025e">Häberlin &amp; Dengler (<a href="#ref-haberlinRecentBiodiversityChanges2025e" role="doc-biblioref">2025</a>)</span> which have reported an increase in the mean in ecological indicator values for temperature whilst a thermophilisation of communities have been reported by <span class="citation" data-cites="kiebacherThermophilisationCommunitiesDiffers2023c">Kiebacher et al. (<a href="#ref-kiebacherThermophilisationCommunitiesDiffers2023c" role="doc-biblioref">2023</a>)</span> both indicating that climatic changes, which are present in Switzerland <span class="citation" data-cites="meteoschweiz2025klimareport2024">(<a href="#ref-meteoschweiz2025klimareport2024" role="doc-biblioref">MeteoSchweiz, 2025</a>)</span>, do affect the communities. Because of these prior findings I would have expected to find the directly modelled bioclimatic changes to be amongst the significant predictors of richness change. I assume that my approach is the main reason this is not the case. Thus the results of the richness change models should be interpreted with caution and it is difficult to draw exact conclusions about which environmental variables are responsible for the observed changes.</p>
+</section>
+<section id="methodological-limitations" class="level2" data-number="5.3">
+<h2 data-number="5.3" class="anchored" data-anchor-id="methodological-limitations"><span class="header-section-number">5.3</span> Methodological limitations</h2>
+<!--Methodological limitations-->
+<!--Innacuracy from sampling in cross validation, see:
+Roberts et. al 2017
+Koldasbayeva et. al 2025
+https://cran.r-project.org/web/packages/blockCV/vignettes/tutorial_2.html-->
+<p>Several methodological limitations should be considered when interpreting the results of this Bachelor thesis analysis. The first being that the standard cross-validation approach used to assess hyperparameter performance is not accounting for spatial autocorrelation in the data <span class="citation" data-cites="robertsCrossvalidationStrategiesData2017">(<a href="#ref-robertsCrossvalidationStrategiesData2017" role="doc-biblioref">Roberts et al., 2017</a>)</span>. Thus the splits are not independent which can lead to overoptimistic estimates of model performance for the hyperparameters and thus the best ones are not identifiable. For this reason <span class="citation" data-cites="koldasbayevaFoundationUnbiasedCrossvalidation2025">Koldasbayeva &amp; Zaytsev (<a href="#ref-koldasbayevaFoundationUnbiasedCrossvalidation2025" role="doc-biblioref">2025</a>)</span> have advised to use spatial blocking methods in Cross-validation. However due to the small size of the dataset, the rather small spatial scale and the sampling using a regular spaced grid the implementation of such a spatial blocking was not pursued.<!--Variable selection process--> As already mentionend was I able to achieve better accuracy for the static richness models by including even some co-linear variables. My variable selection process was guided by reasoning and information from previous studies to reduce the dataset from 68 to 20 predictors. This is less strict than the correlation-threshold approaches used by <span class="citation" data-cites="zellwegerDisentanglingEffectsClimate2015">Zellweger et al. (<a href="#ref-zellwegerDisentanglingEffectsClimate2015" role="doc-biblioref">2015</a>)</span> and <span class="citation" data-cites="dembiczDriversPlantDiversity2021">Dembicz et al. (<a href="#ref-dembiczDriversPlantDiversity2021" role="doc-biblioref">2021</a>)</span> who looked at the correlation matrix and from highly correlated predictors picked the ones they deemed more relevant. <span class="citation" data-cites="ellerbrokDeterminantsTerrestrialLimnic2026">Ellerbrok et al. (<a href="#ref-ellerbrokDeterminantsTerrestrialLimnic2026" role="doc-biblioref">2026</a>)</span> have used a fully automated selection procedure which might even is more strict and less biased than the correlation threshold.<!--Some correlations between features might be hidden--> But even if I had strictly removed co-linear predictors with some threshold, some correlations still remain. Exampled in the case of slope and land use intensity, which are correlated but not as strongly as the correlation threshold would have picked up, <span class="citation" data-cites="rothSpeciesTurnoverReveals2019">Roth et al. (<a href="#ref-rothSpeciesTurnoverReveals2019" role="doc-biblioref">2019</a>)</span> have even used slope as a proxy for land use intensity since steeper terrain is assumed to be less accessible to machinery and therefore less intensively managed. Other correlations which are more obvious but still are below a threshols like the vegetation height, LU_4, and mowing intensity all capture overlapping aspects of land-use intensity, as agricultural land is typically more intensively managed than forested land, which is reflected simultaneously in the mowing intensity values, the vegetation height and the land use classes.<!--Collinearity and permutation permutation importance--> Because some predictors are thus correlated with one another, be it above a chosen threshold or below it, the permutation importance scores could be misleading and the importance of predictors must be looked at with care since predictors could be masked by other correlated predictors.<!--Keeping Collinear predictors improved accuracy--> I still kept these colinear predictors in the model since they improved the predictive accuracy of the models and Random Forest can handle colinear features. It is essentially a trade off between explainability and predictive accuracy and I have stuck more on the side of the predictive accuracy.</p>
+</section>
+<section id="data-limitations-and-uncertainty" class="level2" data-number="5.4">
+<h2 data-number="5.4" class="anchored" data-anchor-id="data-limitations-and-uncertainty"><span class="header-section-number">5.4</span> Data Limitations and uncertainty</h2>
+<p>Several sources of uncertainty stem from the data themselves and my handling of them.<!--Missing Data and inteprolation--> The permutation importance function used did not account for missing values and thus the missing values in the predictors had to be imputed. The soil variables from the KoBo dataset had incomplete national coverage, requiring nearest-neighbour gap-filling for roughly a fifth of the plots. While I assumed this would be preferable to mean imputation, the imputed values do not reflect true measured conditions at those locations and introduce a degree of noise into the soil predictors. Similarly, setting vegetation height and mowing intensity <code>NaN</code> values to zero is a pragmatic assumption that does not hold in all cases, for example in grassland regions where vegetation height varies seasonally and certainly is not truly 0 m.</p>
+<!--Innacuracy from grazing map since it is rather innacurate because grazing/mowing happens on parzellen level and thus cannot be captured accurately at the raster resolution-->
+<p>The extracted mowing intensity per plot is also a rather noisy since the map is a modelled product at 10 m resolution pixels, but mowing decisions are, as I assume, made at the parcel level. The map has quite some fluctuations within parcels and a single raster pixel can therefore not reliably represent whether a specific 10 <span class="math inline">\(m^2\)</span> BDM plot was actually mowed.<!--Uncertainty from coarse scaled Land-Use data and tradeoff between Habitat map--> The land-use classification from the Arealstatistik is also a rather coarse set of data with its 100 m resolution relative to the 10 <span class="math inline">\(m^2\)</span> plot size. Visual inspection in QGIS lets one see that plots are certainly located in urban areas but are not sealed surfaces. For this problem, the habitat map provided a more detailed alternative with its vector polygons but introductes many more factors and co-linearities to the model.</p>
+<!--Static predictors and assumptions (Took snapshot and tried to explain a process in time)-->
+<!--Inherent innacuary from remote sensing data-->
+<p>Finally, the cross-sectional richness model relies entirely on static predictors representing snapshots in time, yet even for this dataset I use data from around the year 2021 and try to explain the variance in the entire survey period of 2021 to 2025. This problem is even worse in the change dataset as I use highly dynamic predictors such as the vegetation height and mowing intensity from 2021 to explain the change in species richness from 2001 to 2020. Being rather strict with variable selection and removing predictors that are highly dynamic over time could thus improve the explainability of the change models.</p>
+</section>
+</section>
+<section id="conclusion" class="level1" data-number="6">
+<h1 data-number="6"><span class="header-section-number">6</span> Conclusion</h1>
+<!--Generell-->
+<p>Species richness is a complex ecological process and thus a wide variety of environmental predictors are needed to accurately predict and explain the variance in species richness. The use of Random Forests allowed me to include a large number of predictors and thus better capture the complexity of the system. Explainability of the models was achieved through the use of permutation importance and partial dependence plots which reveal the most important predictors and their response curves. <!--Richness models--> The created species richness models are able to explain a great deal of variance and many reoccurring patterns from prior studies, either using the BDM data or different datasets, are present. The response curves for the most important predictors are in line with prior studies and thus confirm the validity of my approach and underline that the response is not always linear or hump-shaped but can also be more complex which random forests are able to capture. <!--Richness maps--> The created species richness maps reveal clear spatial patterns with the highest species richness for both groups located in alpine or pre-alpine landscapes which offer more microhabitats and are less affected by humans. The lowest species richness is present in the central plateau which is a rather homogenous landscape with high human land usage through agriculture and urbanization. The estimated model error maps reveal an overall evenly distributed uncertainty across the country with some higher uncertainty in local patches in the Jura region and in between the central plateau and alpine regions. <!--Change models--> The species richness change models are not able to explain a large portion of the variance in species richness change and thus the found significant predictors of change must be interpreted with caution. It does indicate that more changes are happening in plots situated in pre-alpine to alpine regions with lower baseline temperatures which could be an indication of climatic changes and the effect on the elevation distribution with species moving from warmer to colder regions.</p>
+<!--Improvements-->
+<p>Future work could focus on improving the models by using more high resolution environmental data to better capture the microhabitats and thus improve the predictive performance of the models. Exchanging the higher resolution elevation models with the available 2m resolution models might be used to capture the per plot topography and thus the microhabitats better <span class="citation" data-cites="camathiasHighresolutionRemoteSensing2013">(<a href="#ref-camathiasHighresolutionRemoteSensing2013" role="doc-biblioref">Camathias et al., 2013</a>)</span>. For vegetation structure variables, other studies already used the available high resolution LiDar datasets in Switzerland and proved that it is possible to derive more accurate vegetation structure variables through the use of such data rather than the coarse stereo-photogrammetry-based model used here <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a zellwegerEnvironmentalPredictorsSpecies2016">(<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">Vigués Jorba et al., 2025</a>; <a href="#ref-zellwegerEnvironmentalPredictorsSpecies2016" role="doc-biblioref">Zellweger et al., 2016</a>)</span>. The habitat map, as it is used now, is most likely not yielding a lot of additional information as it is made up of many different habitat classes which are highly correlated with other predictors. It could be used however to create a sealed surface predictor which could account for the sealed surfaces in the landscape. Furthermore, the bioclimatic variables were derived at 1 km resolution, which does not capture the fine-scale microclimatic variation that is relevant at the plot level. <span class="citation" data-cites="viguesjorbaDifferentialResponsesTaxonomic2025a">Vigués Jorba et al. (<a href="#ref-viguesjorbaDifferentialResponsesTaxonomic2025a" role="doc-biblioref">2025</a>)</span> have used high resolution microclimatic data from <span class="citation" data-cites="zellwegerMicroclimateMappingUsing2024">Zellweger et al. (<a href="#ref-zellwegerMicroclimateMappingUsing2024" role="doc-biblioref">2024</a>)</span> and have shown that modelled microclimate maps can be used for such a modelling task. <!--Variable selection--> A closer look at the variable selection process is also needed to reduce the biases introduced through some assumptions made, especially regarding the vegetation height and mowing intensity predictors which are highly dynamic over time and are here assumed to be static. <!--Cross validation--> Furthermore the handling with cross-validation could be improved by using spatial blocking methods to account for the spatial autocorrelation <span class="citation" data-cites="robertsCrossvalidationStrategiesData2017">(<a href="#ref-robertsCrossvalidationStrategiesData2017" role="doc-biblioref">Roberts et al., 2017</a>)</span> and the permutation importance scores could be improved by using conditional permutation importance to account for collinearity between predictors <span class="citation" data-cites="stroblConditionalVariableImportance2008">(<a href="#ref-stroblConditionalVariableImportance2008" role="doc-biblioref">Strobl et al., 2008</a>)</span>. The extrapolation maps also need adjustments if a quantitative interpretation is desired as the scale of the sampling plots was not taken into account and thus the extrapolation to larger grain sizes has not been adjusted <span class="citation" data-cites="steinmannNichesNoiseDisentangling2011">(<a href="#ref-steinmannNichesNoiseDisentangling2011" role="doc-biblioref">Steinmann et al., 2011</a>)</span>. <!--Future Work--> A better approach for the target variable definition is also needed to better capture the change in species richness over time by adjusting for high and low initial species richness and thus better capture the change in species richness over time. This could be done by using a panel dataset and modelling the change in species richness with mixed effects random forests which could filter out plots with high variability and adjust for these different baselines, thus better capturing the effects of climatic changes.</p>
+</section>
+<section id="references" class="level1" data-number="7">
+<h1 data-number="7"><span class="header-section-number">7</span> References</h1>
+<div id="refs" class="references csl-bib-body hanging-indent" data-entry-spacing="0" data-line-spacing="2" role="list">
+<div id="ref-austinSpatialPredictionSpecies2002" class="csl-entry" role="listitem">
+Austin, M. P. (2002). Spatial prediction of species distribution: An interface between ecological theory and statistical modelling. <em>Ecological Modelling</em>, <em>157</em>(2-3), 101–118. <a href="https://doi.org/10.1016/S0304-3800(02)00205-3">https://doi.org/10.1016/S0304-3800(02)00205-3</a>
+</div>
+<div id="ref-bdmcoordinationofficeSwissBiodiversityMonitoring2014a" class="csl-entry" role="listitem">
+BDM Coordination Office. (2014). <em>Swiss <span>Biodiversity Monitoring BDM</span>. <span>Description</span> of <span>Methods</span> and <span>Indicators</span>.</em> (No. 1410; pp. 103 pp). Federal Office for the Environment.
+</div>
+<div id="ref-bfs_geostat_1979_85_arealstatistik" class="csl-entry" role="listitem">
+BFS GEOSTAT. (1985). <em>Arealstatistik</em>. https://www.bfs.admin.ch.
+</div>
+<div id="ref-boothCheckingBioclimaticVariables2022" class="csl-entry" role="listitem">
+Booth, T. H. (2022). Checking bioclimatic variables that combine temperature and precipitation data before their use in species distribution models. <em>Austral Ecology</em>, <em>47</em>(7), 1506–1514. <a href="https://doi.org/10.1111/aec.13234">https://doi.org/10.1111/aec.13234</a>
+</div>
+<div id="ref-camathiasHighresolutionRemoteSensing2013" class="csl-entry" role="listitem">
+Camathias, L., Bergamini, A., Küchler, M., Stofer, S., &amp; Baltensweiler, A. (2013). High-resolution remote sensing data improves models of species richness. <em>Applied Vegetation Science</em>, <em>16</em>(4), 539–551. <a href="https://doi.org/10.1111/avsc.12028">https://doi.org/10.1111/avsc.12028</a>
+</div>
+<div id="ref-cardinaleBiodiversityLossIts2012b" class="csl-entry" role="listitem">
+Cardinale, B. J., Duffy, J. E., Gonzalez, A., Hooper, D. U., Perrings, C., Venail, P., Narwani, A., Mace, G. M., Tilman, D., Wardle, D. A., Kinzig, A. P., Daily, G. C., Loreau, M., Grace, J. B., Larigauderie, A., Srivastava, D. S., &amp; Naeem, S. (2012). Biodiversity loss and its impact on humanity. <em>Nature</em>, <em>486</em>(7401), 59–67. <a href="https://doi.org/10.1038/nature11148">https://doi.org/10.1038/nature11148</a>
+</div>
+<div id="ref-currieEnergyLargeScalePatterns1991" class="csl-entry" role="listitem">
+Currie, D. J. (1991). Energy and <span>Large-Scale Patterns</span> of <span>Animal-</span> and <span>Plant-Species Richness</span>. <em>The American Naturalist</em>, <em>137</em>(1), 27–49. <a href="https://doi.org/10.1086/285144">https://doi.org/10.1086/285144</a>
+</div>
+<div id="ref-delarzeLebensraeumeSchweizOekologie2015" class="csl-entry" role="listitem">
+Delarze, R., Gonseth, Y., Eggenberg, S., Vust, M., &amp; Delarze, R. (2015). <em><span>Lebensräume der Schweiz: Ökologie - Gefährdung - Kennarten</span></em> (3., vollständig überarbeitete Auflage). Ott der Sachbuchverlag.
+</div>
+<div id="ref-dembiczDriversPlantDiversity2021" class="csl-entry" role="listitem">
+Dembicz, I., Velev, N., Boch, S., Janišová, M., Palpurina, S., Pedashenko, H., Vassilev, K., &amp; Dengler, J. (2021). Drivers of plant diversity in <span>Bulgarian</span> dry grasslands vary across spatial scales and functional-taxonomic groups. <em>Journal of Vegetation Science</em>, <em>32</em>(1), e12935. <a href="https://doi.org/10.1111/jvs.12935">https://doi.org/10.1111/jvs.12935</a>
+</div>
+<div id="ref-divisekHighresolutionLargeextentMapping2018" class="csl-entry" role="listitem">
+Divíšek, J., &amp; Chytrý, M. (2018). High-resolution and large-extent mapping of plant species richness using vegetation-plot databases. <em>Ecological Indicators</em>, <em>89</em>, 840–851. <a href="https://doi.org/10.1016/j.ecolind.2017.11.005">https://doi.org/10.1016/j.ecolind.2017.11.005</a>
+</div>
+<div id="ref-ellerbrokDeterminantsTerrestrialLimnic2026" class="csl-entry" role="listitem">
+Ellerbrok, J. S., Sporbert, M., Schreiner, V., Ristok, C., Farwig, N., Hähn, G. J. A., Klenke, R., Seidler, G., Marx, J. M., Schmidt, A., Settele, J., Wirth, C., Albert, C., Bässler, C., Braunisch, V., Brunken, H., Conze, K.-J., Eichenberg, D., Eisenhauer, N., … Bruelheide, H. (2026). Determinants of <span>Terrestrial</span> and <span>Limnic Species Richness</span> in <span>Germany</span>. <em>Diversity and Distributions</em>, <em>32</em>(3), e70170. <a href="https://doi.org/10.1111/ddi.70170">https://doi.org/10.1111/ddi.70170</a>
+</div>
+<div id="ref-federalofficeofmeteorologyandclimatologymeteoswissClimateSwitzerlandMeteoSwissn.d" class="csl-entry" role="listitem">
+Federal Office of Meteorology and Climatology MeteoSwiss. (n.d). <em>The climate of <span>Switzerland</span> - <span>MeteoSwiss</span></em>. https://www.meteoswiss.admin.ch/climate/the-climate-of-switzerland.html.
+</div>
+<div id="ref-ferrierMappingSpatialPattern2002" class="csl-entry" role="listitem">
+Ferrier, S. (2002). Mapping <span>Spatial Pattern</span> in <span>Biodiversity</span> for <span>Regional Conservation Planning</span>: <span>Where</span> to from <span>Here</span>? <em>Systematic Biology</em>, <em>51</em>(2), 331–363. <a href="https://doi.org/10.1080/10635150252899806">https://doi.org/10.1080/10635150252899806</a>
+</div>
+<div id="ref-ferrierSpatialModellingBiodiversity2006" class="csl-entry" role="listitem">
+Ferrier, S., &amp; Guisan, A. (2006). Spatial modelling of biodiversity at the community level. <em>Journal of Applied Ecology</em>, <em>43</em>(3), 393–404. <a href="https://doi.org/10.1111/j.1365-2664.2006.01149.x">https://doi.org/10.1111/j.1365-2664.2006.01149.x</a>
+</div>
+<div id="ref-foxPolycorPolychoricPolyserial2025" class="csl-entry" role="listitem">
+Fox, J. (2025). <em>Polycor: <span>Polychoric</span> and polyserial correlations</em> [Manual].
+</div>
+<div id="ref-freemanExpandingShiftingShrinking2018a" class="csl-entry" role="listitem">
+Freeman, B. G., Lee-Yaw, J. A., Sunday, J. M., &amp; Hargreaves, A. L. (2018). Expanding, shifting and shrinking: <span>The</span> impact of global warming on species’ elevational distributions. <em>Global Ecology and Biogeography</em>, <em>27</em>(11), 1268–1276. <a href="https://doi.org/10.1111/geb.12774">https://doi.org/10.1111/geb.12774</a>
+</div>
+<div id="ref-ginzler2021vegetationheightmodelnfi" class="csl-entry" role="listitem">
+Ginzler, C. (2021). <em>Vegetation height model <span>NFI</span></em>. National Forest Inventory (NFI). <a href="https://doi.org/10.16904/1000001.1">https://doi.org/10.16904/1000001.1</a>
+</div>
+<div id="ref-goebesStrengthSoilplantInteractions2019" class="csl-entry" role="listitem">
+Goebes, P., Schmidt, K., Seitz, S., Both, S., Bruelheide, H., Erfmeier, A., Scholten, T., &amp; Kühn, P. (2019). The strength of soil-plant interactions under forest is related to a <span>Critical Soil Depth</span>. <em>Scientific Reports</em>, <em>9</em>(1), 8635. <a href="https://doi.org/10.1038/s41598-019-45156-5">https://doi.org/10.1038/s41598-019-45156-5</a>
+</div>
+<div id="ref-greenwellPdpPackageConstructing2017" class="csl-entry" role="listitem">
+Greenwell, B. M. (2017). Pdp: <span>An R</span> package for constructing partial dependence plots. <em>The R Journal</em>, <em>9</em>(1), 421–436. <a href="https://doi.org/10.32614/RJ-2017-016">https://doi.org/10.32614/RJ-2017-016</a>
+</div>
+<div id="ref-haberlinRecentBiodiversityChanges2025e" class="csl-entry" role="listitem">
+Häberlin, K. E. R., &amp; Dengler, J. (2025). Recent biodiversity changes in grasslands across elevational bands in <span>Switzerland</span>. <em>Basic and Applied Ecology</em>, <em>87</em>, 29–37. <a href="https://doi.org/10.1016/j.baae.2025.05.003">https://doi.org/10.1016/j.baae.2025.05.003</a>
+</div>
+<div id="ref-hawkinsENERGYWATERBROADSCALE2003" class="csl-entry" role="listitem">
+Hawkins, B. A., Field, R., Cornell, H. V., Currie, D. J., Guégan, J.-F., Kaufman, D. M., Kerr, J. T., Mittelbach, G. G., Oberdorff, T., O’Brien, E. M., Porter, E. E., &amp; Turner, J. R. G. (2003). Energy, water and broad-scale geographic patterns of species richness. <em>Ecology</em>, <em>84</em>(12), 3105–3117. <a href="https://doi.org/10.1890/03-8006">https://doi.org/10.1890/03-8006</a>
+</div>
+<div id="ref-hijmansTerraSpatialData2026" class="csl-entry" role="listitem">
+Hijmans, R. J., Brown, A., &amp; Barbosa, M. (2026). <em>Terra: <span>Spatial</span> data analysis</em> [Manual].
+</div>
+<div id="ref-hijmansDismoSpeciesDistribution2024" class="csl-entry" role="listitem">
+Hijmans, R. J., Phillips, S., Leathwick, J., &amp; Elith, J. (2024). <em>Dismo: <span>Species</span> distribution modeling</em> [Manual].
+</div>
+<div id="ref-kiebacherThermophilisationCommunitiesDiffers2023c" class="csl-entry" role="listitem">
+Kiebacher, T., Meier, M., Kipfer, T., &amp; Roth, T. (2023). Thermophilisation of communities differs between land plant lineages, land use types and elevation. <em>Scientific Reports</em>, <em>13</em>(1), 11395. <a href="https://doi.org/10.1038/s41598-023-38195-6">https://doi.org/10.1038/s41598-023-38195-6</a>
+</div>
+<div id="ref-koldasbayevaFoundationUnbiasedCrossvalidation2025" class="csl-entry" role="listitem">
+Koldasbayeva, D., &amp; Zaytsev, A. (2025). Foundation for unbiased cross-validation of spatio-temporal models for <span>Species Distribution Modeling</span>. <em>Ecological Informatics</em>, <em>92</em>, 103521. <a href="https://doi.org/10.1016/j.ecoinf.2025.103521">https://doi.org/10.1016/j.ecoinf.2025.103521</a>
+</div>
+<div id="ref-kobo_bodenportal" class="csl-entry" role="listitem">
+Kompetenzzentrum Boden (KOBO). (2026). <em>Bodeninformationen <span>National</span>: <span>Hinweiskarten</span> für <span>Bodeneigenschaften</span></em>. https://ccsols.ch/de/boeden-kartieren/kartenerstellung/hinweiskarten-fuer-bodeneigenschaften.
+</div>
+<div id="ref-krebsEcologyExperimentalAnalysis2014b" class="csl-entry" role="listitem">
+Krebs, C. J. (2014). <em>Ecology: The experimental analysis of distribution and abundance</em> (6. ed., Pearson new international ed.). Pearson.
+</div>
+<div id="ref-kuhnBuildingPredictiveModels2008a" class="csl-entry" role="listitem">
+Kuhn, M. (2008). Building predictive models in <span>R</span> using the caret package. <em>Journal of Statistical Software</em>, <em>28</em>(5), 1–26. <a href="https://doi.org/10.18637/jss.v028.i05">https://doi.org/10.18637/jss.v028.i05</a>
+</div>
+<div id="ref-lindsayWhiteboxGATCase2016" class="csl-entry" role="listitem">
+Lindsay, J. B. (2016). Whitebox <span>GAT</span>: <span>A</span> case study in geomorphometric analysis. <em>Computers &amp; Geosciences</em>, <em>95</em>, 75–84. <a href="https://doi.org/10.1016/j.cageo.2016.07.003">https://doi.org/10.1016/j.cageo.2016.07.003</a>
+</div>
+<div id="ref-meteoschweiz2025klimareport2024" class="csl-entry" role="listitem">
+MeteoSchweiz. (2025). <em>Klimareport 2024</em> [Report]. Bundesamt für Meteorologie und Klimatologie MeteoSchweiz.
+</div>
+<div id="ref-newboldGlobalEffectsLand2015" class="csl-entry" role="listitem">
+Newbold, T., Hudson, L. N., Hill, S. L. L., Contu, S., Lysenko, I., Senior, R. A., Börger, L., Bennett, D. J., Choimes, A., Collen, B., Day, J., De Palma, A., Díaz, S., Echeverria-Londoño, S., Edgar, M. J., Feldman, A., Garon, M., Harrison, M. L. K., Alhusseini, T., … Purvis, A. (2015). Global effects of land use on local terrestrial biodiversity. <em>Nature</em>, <em>520</em>(7545), 45–50. <a href="https://doi.org/10.1038/nature14324">https://doi.org/10.1038/nature14324</a>
+</div>
+<div id="ref-oksanenContinuumTheoryRevisited2002" class="csl-entry" role="listitem">
+Oksanen, J., &amp; Minchin, P. R. (2002). Continuum theory revisited: What shape are species responses along ecological gradients? <em>Ecological Modelling</em>, <em>157</em>(2-3), 119–129. <a href="https://doi.org/10.1016/S0304-3800(02)00190-4">https://doi.org/10.1016/S0304-3800(02)00190-4</a>
+</div>
+<div id="ref-pebesmaSimpleFeaturesStandardized2018a" class="csl-entry" role="listitem">
+Pebesma, E. (2018). Simple features for <span>R</span>: <span>Standardized</span> support for spatial vector data. <em>The R Journal</em>, <em>10</em>(1), 439–446. <a href="https://doi.org/10.32614/RJ-2018-009">https://doi.org/10.32614/RJ-2018-009</a>
+</div>
+<div id="ref-peclBiodiversityRedistributionClimate2017a" class="csl-entry" role="listitem">
+Pecl, G. T., Araújo, M. B., Bell, J. D., Blanchard, J., Bonebrake, T. C., Chen, I.-C., Clark, T. D., Colwell, R. K., Danielsen, F., Evengård, B., Falconi, L., Ferrier, S., Frusher, S., Garcia, R. A., Griffis, R. B., Hobday, A. J., Janion-Scheepers, C., Jarzyna, M. A., Jennings, S., … Williams, S. E. (2017). Biodiversity redistribution under climate change: <span>Impacts</span> on ecosystems and human well-being. <em>Science</em>, <em>355</em>(6332), eaai9214. <a href="https://doi.org/10.1126/science.aai9214">https://doi.org/10.1126/science.aai9214</a>
+</div>
+<div id="ref-the-habitat-map-of-switzerland-v1_2-2025" class="csl-entry" role="listitem">
+Price, B., Kolecka, N., Ginzler, C., Rüetschi, M., Allemann, R., Bubula, E., &amp; Joseph, C. (2025). <em>The habitat map of switzerland V1_2 2025</em>. EnviDat. https://doi.org/<a href="http://dx.doi.org/10.16904/envidat.723">http://dx.doi.org/10.16904/envidat.723</a>
+</div>
+<div id="ref-rcoreteamLanguageEnvironmentStatistical2026" class="csl-entry" role="listitem">
+R Core Team. (2026). <em>R: A language and environment for statistical computing</em> [Manual]. R Foundation for Statistical Computing.
+</div>
+<div id="ref-robertsCrossvalidationStrategiesData2017" class="csl-entry" role="listitem">
+Roberts, D. R., Bahn, V., Ciuti, S., Boyce, M. S., Elith, J., Guillera-Arroita, G., Hauenstein, S., Lahoz-Monfort, J. J., Schröder, B., Thuiller, W., Warton, D. I., Wintle, B. A., Hartig, F., &amp; Dormann, C. F. (2017). Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. <em>Ecography</em>, <em>40</em>(8), 913–929. <a href="https://doi.org/10.1111/ecog.02881">https://doi.org/10.1111/ecog.02881</a>
+</div>
+<div id="ref-rothSpeciesTurnoverReveals2019" class="csl-entry" role="listitem">
+Roth, T., Kohli, L., Bühler, C., Rihm, B., Meuli, R. G., Meier, R., &amp; Amrhein, V. (2019). Species turnover reveals hidden effects of decreasing nitrogen deposition in mountain hay meadows. <em>PeerJ</em>, <em>7</em>, e6347. <a href="https://doi.org/10.7717/peerj.6347">https://doi.org/10.7717/peerj.6347</a>
+</div>
+<div id="ref-StartseiteMeteoSchweiz" class="csl-entry" role="listitem">
+<em><span>Startseite - MeteoSchweiz</span></em>. (n.d.). https://www.meteoschweiz.admin.ch/.
+</div>
+<div id="ref-steinEnvironmentalHeterogeneityUniversal2014" class="csl-entry" role="listitem">
+Stein, A., Gerstner, K., &amp; Kreft, H. (2014). Environmental heterogeneity as a universal driver of species richness across taxa, biomes and spatial scales. <em>Ecology Letters</em>, <em>17</em>(7), 866–880. <a href="https://doi.org/10.1111/ele.12277">https://doi.org/10.1111/ele.12277</a>
+</div>
+<div id="ref-steinmannNichesNoiseDisentangling2011" class="csl-entry" role="listitem">
+Steinmann, K., Eggenberg, S., Wohlgemuth, T., Linder, H. P., &amp; Zimmermann, N. E. (2011). Niches and noise—<span>Disentangling</span> habitat diversity and area effect on species diversity. <em>Ecological Complexity</em>, <em>8</em>(4), 313–319. <a href="https://doi.org/10.1016/j.ecocom.2011.06.004">https://doi.org/10.1016/j.ecocom.2011.06.004</a>
+</div>
+<div id="ref-steinmannModellingPlantSpecies2009" class="csl-entry" role="listitem">
+Steinmann, K., Linder, H. P., &amp; Zimmermann, N. E. (2009). Modelling plant species richness using functional groups. <em>Ecological Modelling</em>, <em>220</em>(7), 962–967. <a href="https://doi.org/10.1016/j.ecolmodel.2009.01.006">https://doi.org/10.1016/j.ecolmodel.2009.01.006</a>
+</div>
+<div id="ref-stroblConditionalVariableImportance2008" class="csl-entry" role="listitem">
+Strobl, C., Boulesteix, A.-L., Kneib, T., Augustin, T., &amp; Zeileis, A. (2008). Conditional variable importance for random forests. <em>BMC Bioinformatics</em>, <em>9</em>(1), 307. <a href="https://doi.org/10.1186/1471-2105-9-307">https://doi.org/10.1186/1471-2105-9-307</a>
+</div>
+<div id="ref-stumpfSpatiotemporalLandUse2018" class="csl-entry" role="listitem">
+Stumpf, F., Keller, A., Schmidt, K., Mayr, A., Gubler, A., &amp; Schaepman, M. (2018). Spatio-temporal land use dynamics and soil organic carbon in <span>Swiss</span> agroecosystems. <em>Agriculture, Ecosystems &amp; Environment</em>, <em>258</em>, 129–142. <a href="https://doi.org/10.1016/j.agee.2018.02.012">https://doi.org/10.1016/j.agee.2018.02.012</a>
+</div>
+<div id="ref-swisstopo2010dhm25" class="csl-entry" role="listitem">
+<span class="nocase">swisstopo</span>. (2010). <em><span>DHM25</span> – the digital height model of switzerland</em>. http://www.swisstopo.admin.ch.
+</div>
+<div id="ref-viguesjorbaDifferentialResponsesTaxonomic2025a" class="csl-entry" role="listitem">
+Vigués Jorba, J., Scherrer, D., Duchenne, F., Zellweger, F., Gossner, M. M., &amp; Bollmann, K. (2025). Differential responses of taxonomic, functional and phylogenetic multi-taxa diversity to environmental factors in temperate forest ecosystems. <em>Ecological Indicators</em>, <em>178</em>, 113855. <a href="https://doi.org/10.1016/j.ecolind.2025.113855">https://doi.org/10.1016/j.ecolind.2025.113855</a>
+</div>
+<div id="ref-wagerConfidenceIntervalsRandom2014" class="csl-entry" role="listitem">
+Wager, S., Hastie, T., &amp; Efron, B. (2014). <em>Confidence <span>Intervals</span> for <span>Random Forests</span>: <span>The Jackknife</span> and the <span>Infinitesimal Jackknife</span></em> (arXiv:1311.4555). arXiv. <a href="https://doi.org/10.48550/arXiv.1311.4555">https://doi.org/10.48550/arXiv.1311.4555</a>
+</div>
+<div id="ref-weberScaleTrendsSpecies2004" class="csl-entry" role="listitem">
+Weber, D., Hintermann, U., &amp; Zangger, A. (2004). Scale and trends in species richness: Considerations for monitoring biological diversity for political purposes. <em>Global Ecology and Biogeography</em>, <em>13</em>(2), 97–104. <a href="https://doi.org/10.1111/j.1466-882X.2004.00078.x">https://doi.org/10.1111/j.1466-882X.2004.00078.x</a>
+</div>
+<div id="ref-grassland-use-intensity-maps-for-switzerland-2023" class="csl-entry" role="listitem">
+Weber, D., Schwieder, M., Ritter, L., Koch, T., Psomas, A., Huber, N., Ginzler, C., &amp; Boch, S. (2023). <em>Grassland-use intensity maps for <span>Switzerland</span></em>. EnviDat. https://doi.org/<a href="http://dx.doi.org/10.16904/envidat.428">http://dx.doi.org/10.16904/envidat.428</a>
+</div>
+<div id="ref-wohlgemuthModellingVascularPlant2008" class="csl-entry" role="listitem">
+Wohlgemuth, T., Nobis, M. P., Kienast, F., &amp; Plattner, M. (2008). Modelling vascular plant diversity at the landscape scale using systematic samples. <em>Journal of Biogeography</em>, <em>35</em>(7), 1226–1240. <a href="https://doi.org/10.1111/j.1365-2699.2008.01884.x">https://doi.org/10.1111/j.1365-2699.2008.01884.x</a>
+</div>
+<div id="ref-wrightRangerFastImplementation2017" class="csl-entry" role="listitem">
+Wright, M. N., &amp; Ziegler, A. (2017). Ranger: A fast implementation of random forests for high dimensional data in <span>C</span>++ and <span>R</span>. <em>Journal of Statistical Software</em>, <em>77</em>(1), 1–17. <a href="https://doi.org/10.18637/jss.v077.i01">https://doi.org/10.18637/jss.v077.i01</a>
+</div>
+<div id="ref-zellwegerEnvironmentalPredictorsSpecies2016" class="csl-entry" role="listitem">
+Zellweger, F., Baltensweiler, A., Ginzler, C., Roth, T., Braunisch, V., Bugmann, H., &amp; Bollmann, K. (2016). Environmental predictors of species richness in forest landscapes: Abiotic factors versus vegetation structure. <em>Journal of Biogeography</em>, <em>43</em>(6), 1080–1090. <a href="https://doi.org/10.1111/jbi.12696">https://doi.org/10.1111/jbi.12696</a>
+</div>
+<div id="ref-zellwegerDisentanglingEffectsClimate2015" class="csl-entry" role="listitem">
+Zellweger, F., Braunisch, V., Morsdorf, F., Baltensweiler, A., Abegg, M., Roth, T., Bugmann, H., &amp; Bollmann, K. (2015). Disentangling the effects of climate, topography, soil and vegetation on stand-scale species richness in temperate forests. <em>Forest Ecology and Management</em>, <em>349</em>, 36–44. <a href="https://doi.org/10.1016/j.foreco.2015.04.008">https://doi.org/10.1016/j.foreco.2015.04.008</a>
+</div>
+<div id="ref-zellwegerMicroclimateMappingUsing2024" class="csl-entry" role="listitem">
+Zellweger, F., Sulmoni, E., Malle, J. T., Baltensweiler, A., Jonas, T., Zimmermann, N. E., Ginzler, C., Karger, D. N., De Frenne, P., Frey, D., &amp; Webster, C. (2024). Microclimate mapping using novel radiative transfer modelling. <em>Biogeosciences</em>, <em>21</em>(2), 605–623. <a href="https://doi.org/10.5194/bg-21-605-2024">https://doi.org/10.5194/bg-21-605-2024</a>
+</div>
+</div>
+</section>
+<section id="appendix" class="level1" data-number="8">
+<h1 data-number="8"><span class="header-section-number">8</span> Appendix</h1>
+<section id="correlation-matrices" class="level2" data-number="8.1">
+<h2 data-number="8.1" class="anchored" data-anchor-id="correlation-matrices"><span class="header-section-number">8.1</span> Correlation Matrices</h2>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-corr-mixed-full" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-corr-mixed-full-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/corr_mixed_full.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-corr-mixed-full-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: Mixed correlation matrix (Pearson / Polyserial / Polychoric) for all environmental predictors before variable selection.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-corr-pearson-full" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-corr-pearson-full-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/corr_pearson_full.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-corr-pearson-full-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Pearson correlation matrix for numeric predictors before variable selection.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-corr-mixed-final" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-corr-mixed-final-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/corr_mixed_final.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-corr-mixed-final-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Mixed correlation matrix (Pearson / Polyserial / Polychoric) for the final 20 selected predictors.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-corr-pearson-final" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-corr-pearson-final-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/corr_pearson_final.png" class="img-fluid figure-img" style="width:75.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-corr-pearson-final-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;5: Pearson correlation matrix for the numeric subset of the final 20 selected predictors.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="model-stability" class="level2" data-number="8.2">
+<h2 data-number="8.2" class="anchored" data-anchor-id="model-stability"><span class="header-section-number">8.2</span> Model Stability</h2>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-ntrees-stability" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-ntrees-stability-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/rf_moss_cv_tree_metrics.png" class="img-fluid figure-img" style="width:100.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-ntrees-stability-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;6: Number of trees vs.&nbsp;mean cross-validation metrics for the bryophyte richness model showing MAE, RMSE, and R² as a function of the number of trees. Based on this analysis, 500 trees were chosen for all models.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="prediction-maps" class="level2" data-number="8.3">
+<h2 data-number="8.3" class="anchored" data-anchor-id="prediction-maps"><span class="header-section-number">8.3</span> Prediction maps</h2>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-prediction-maps-bryophyte" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-prediction-maps-bryophyte-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/prediction_moss_100m_viridis_legend.png" class="img-fluid figure-img" style="width:140.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-prediction-maps-bryophyte-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;7: Prediction maps for bryophytes richness at 100 m resolution.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-prediction-maps-plant" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-prediction-maps-plant-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/prediction_plant_100m_viridis_legend.png" class="img-fluid figure-img" style="width:140.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-prediction-maps-plant-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;8: Prediction maps for vascular plant richness at 100 m resolution.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-prediction-maps-bryophyte-se" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-prediction-maps-bryophyte-se-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/prediction_moss_se_100m_legend.png" class="img-fluid figure-img" style="width:140.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-prediction-maps-bryophyte-se-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;9: Prediction estimated model error maps for bryophytes richness at 100 m resolution.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="cell-output-display">
+<div id="fig-prediction-maps-plant-se" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-prediction-maps-plant-se-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="_figures/appendix/prediction_plant_se_100m_legend.png" class="img-fluid figure-img" style="width:140.0%">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-prediction-maps-plant-se-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;10: Prediction estimated model error maps for vascular plant richness at 100 m resolution.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

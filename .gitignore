@@ -1,0 +1,30 @@
+# R project files and virtual environment
+.Rproj.user
+.RData
+.Rhistory
+renv/
+BA-BDM-modeling.Rproj
+
+# VSCode and Quarto files
+.quarto/
+.vscode/
+
+# README files
+README_files/
+README.html
+
+# QGIS project files
+bdm.qgz
+
+# Intermediate and deprecated data and plots
+00_interim/
+00_deprecated/
+08_plotting/plots/derelict
+08_plotting/plots/prediction/derelict
+
+# Report extensions and index files
+00_report/_extensions/
+00_report/index_files/
+00_report/_cache/
+00_report/.quarto/
+/.luarc.json

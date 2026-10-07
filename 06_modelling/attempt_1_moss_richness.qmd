@@ -1,0 +1,201 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load moss model data
+moss_data <- readRDS(PATH_MDL1_MOSS_DATA)
+moss_richness <- readRDS(PATH_MOSS_RICHNESS)
+```
+
+# Data preparation
+## Remove target column and plot ID
+```{r}
+# Remove year and ID columns
+moss_data <- moss_data |>
+  dplyr::select(-yearMoos, -aID_STAO)
+
+# Keep only climate variables for the 15 year aggregate
+moss_data <- moss_data |>
+  dplyr::select(-dplyr::matches("_(5|10|20|30)yr$"))
+
+dim(moss_data) # 1442 x 120
+```
+
+# Species richness modelling Random forest
+## Train test split
+```{r}
+set.seed(123)
+train_idx <- caret::createDataPartition(moss_data$richness_moss, p = 0.8, list = FALSE)
+moss_train <- moss_data[train_idx, ]
+moss_test  <- moss_data[-train_idx, ]
+```
+
+## Assess OOB performance across different numbers of trees
+```{r}
+# Evaluate OOB performance across different numbers of trees
+n_trees_values <- c(5, 20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+
+oob_metrics <- lapply(n_trees_values, function(n_trees) {
+  rf_tmp <- ranger::ranger(
+    richness_moss ~ .,
+    data = moss_train,
+    num.trees = n_trees,
+    mtry = floor(ncol(moss_train) / 3),
+    min.node.size = 5,
+    splitrule = "variance",
+    importance = "none",
+    num.threads = max(1, parallel::detectCores() - 1),
+    seed = 123
+  )
+
+  data.frame(
+    n_trees = n_trees,
+    oob_mse = rf_tmp$prediction.error,
+    oob_r2  = rf_tmp$r.squared
+  )
+})
+
+# Combine OOB metrics into a single data frame
+oob_metrics_df <- dplyr::bind_rows(oob_metrics)
+
+# Save OOB metrics for analysis
+write.csv(oob_metrics_df, file = file.path(DIR_MDL1_OUT, "rf_moss_tune_oob_tree_metrics.csv"), row.names = FALSE)
+```
+
+### Plot OOB MSE and R2 across different numbers of trees
+```{r}
+# Calculate scaling parameters for plotting OOB MSE and R2 on the same plot
+mse_min <- min(oob_metrics_df$oob_mse, na.rm = TRUE)
+mse_max <- max(oob_metrics_df$oob_mse, na.rm = TRUE)
+r2_min  <- min(oob_metrics_df$oob_r2, na.rm = TRUE)
+r2_max  <- max(oob_metrics_df$oob_r2, na.rm = TRUE)
+
+oob_metrics_df <- oob_metrics_df |>
+  dplyr::mutate(
+    oob_r2_scaled = (oob_r2 - r2_min) / (r2_max - r2_min) * (mse_max - mse_min) + mse_min
+  )
+
+ggplot(oob_metrics_df, ggplot2::aes(x = n_trees)) +
+  geom_line(ggplot2::aes(y = oob_mse, color = "OOB MSE"), linewidth = 1) +
+  geom_point(ggplot2::aes(y = oob_mse, color = "OOB MSE"), size = 2) +
+  geom_line(ggplot2::aes(y = oob_r2_scaled, color = "OOB R2"), linewidth = 1) +
+  geom_point(ggplot2::aes(y = oob_r2_scaled, color = "OOB R2"), size = 2) +
+  scale_y_continuous(
+    name = "OOB MSE",
+    sec.axis = ggplot2::sec_axis(
+      ~ (. - mse_min) / (mse_max - mse_min) * (r2_max - r2_min) + r2_min,
+      name = "OOB R2"
+    )
+  ) +
+  scale_color_manual(values = c("OOB MSE" = "steelblue", "OOB R2" = "darkgreen")) +
+  labs(
+    title = "OOB Metrics by Number of Trees",
+    x = "Number of Trees",
+    color = "Metric"
+  ) +
+  theme_minimal() +
+  theme(aspect.ratio = 0.6)
+
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_moss_tune_oob_tree_metrics.png"), width = 8, height = 6, dpi = 300)
+```
+
+## Fit final model with stable settings
+```{r}
+rf_moss_final <- ranger::ranger(
+  richness_moss ~ .,
+  data = moss_train, # Use only training data for final model
+  num.trees = 500, # Number of trees for stable prediction
+  mtry = floor(ncol(moss_train) / 3),
+  min.node.size = 5,
+  splitrule = "variance",
+  importance = "permutation",
+  num.threads = max(1, parallel::detectCores() - 1),
+  seed = 123
+)
+
+rf_moss_final
+# R squared OOB: 0.47
+# MSE OOB: 40.67
+
+saveRDS(rf_moss_final, file = file.path(DIR_MDL1_OUT, "rf_moss_final.rds"))
+```
+
+### Evaluate on test data
+```{r}
+# Predict on test data
+rf_moss_test_pred <- predict(rf_moss_final, data = moss_test)
+
+# Calculate performance metrics
+mse_moss_test <- mean((rf_moss_test_pred$predictions - moss_test$richness_moss)^2)
+r2_moss_test  <- 1 - sum((rf_moss_test_pred$predictions - moss_test$richness_moss)^2) /
+                     sum((moss_test$richness_moss - mean(moss_test$richness_moss))^2)
+
+r2_moss_test
+# R squared: 0.38
+mse_moss_test
+# MSE: 50.64
+```
+
+### Calculate variable importance
+```{r}
+# Calculate variable importance using permutation method (Altmann's method)
+importance_pvalues_moss_obj <- ranger::importance_pvalues(
+  rf_moss_final,
+  method = "altmann",
+  num.permutations = 100,
+  formula = richness_moss ~ .,
+  data = moss_train, # Use training data for importance calculation to avoid data leakage
+  num.threads = parallel::detectCores() - 1,
+  seed = 123 # Set seed for reproducibility
+)
+
+# Convert importance results to a data frame for easier handling
+importance_pvalues_moss_df <- data.frame(
+  Variable = rownames(importance_pvalues_moss_obj),
+  importance_pvalues_moss_obj
+) |>
+  dplyr::arrange(pvalue)
+
+# Save the final model and importance results
+write.csv(importance_pvalues_moss_df, file = file.path(DIR_MDL1_OUT, "rf_moss_imp_pval.csv"), row.names = FALSE)
+```
+
+#### Plot variable importance of the 20 most important variables
+```{r}
+# Keep only significant variables (p < 0.05), ordered by importance
+sig_importance <- importance_pvalues_moss_df |>
+  dplyr::filter(pvalue < 0.05) |>
+  dplyr::arrange(dplyr::desc(importance))
+
+# Create a bar plot of significant variables
+ggplot(sig_importance, aes(x = reorder(Variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0("p=", round(pvalue, 3))), hjust = -0.1, size = 3) +
+  coord_flip() +
+  expand_limits(y = max(sig_importance$importance) * 1.2) +
+  labs(
+    title = paste0("Significant Variable Importance (p < 0.05, n=", nrow(sig_importance), ")"),
+    x = "Variable",
+    y = "Importance"
+  ) +
+  theme_minimal()
+
+# Save the variable importance plot
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_moss_imp_significant.png"), width = 8, height = max(4, nrow(sig_importance) * 0.3), dpi = 300)
+```
+
+#### Plot the partial dependence of the most important variable
+```{r}
+
+
+```

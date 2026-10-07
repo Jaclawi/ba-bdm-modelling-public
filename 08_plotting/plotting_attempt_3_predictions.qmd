@@ -1,0 +1,341 @@
+# CH-wide Prediction Maps
+## Libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(terra)
+library(sf)
+library(cowplot)
+library(extrafont)
+library(ggsci)
+```
+
+## Setup
+```{r setup}
+source("./_config.r")
+DIR_PLOTS <- "08_plotting/plots"
+
+# Report column width (147 mm → inches)
+REPORT_WIDTH_IN <- 147 / 25.4
+
+# Number of quantile bins for viridis colouring
+n_q <- 10
+
+# NPG palette — first colour used for SE maps
+pal       <- pal_npg("nrc")(10)
+se_colors <- colorRampPalette(c("#f5f5f5", pal[1]))(n_q)
+```
+
+## Spatial boundaries and lakes
+```{r setup-boundaries}
+# Switzerland national boundary
+country_ch <- st_read(
+  file.path(PATH_ASSETS, "swissboundaries3d_2025-04_2056_5728.shp/swissBOUNDARIES3D_1_5_TLM_LANDESGEBIET.shp"),
+  quiet = TRUE
+) |>
+  st_zm() |>
+  filter(ICC == "CH") |>
+  st_transform(2056)
+
+# Lakes >= 2 km², clipped to Switzerland
+lakes <- st_read(
+  file.path(PATH_ASSETS, "swissTLMRegio_Product_LV95/Hydrography/swissTLMRegio_Lake.shp"),
+  quiet = TRUE
+) |>
+  st_zm() |>
+  st_transform(2056) |>
+  filter(as.numeric(st_area(geometry)) >= 2e6) |>
+  st_intersection(country_ch)
+```
+
+## 100 m — Richness predictions
+
+### Bryophyte richness
+```{r plot-moss-100m}
+# Load moss richness raster and convert to data frame
+r_moss    <- rast(file.path(DIR_MDL3_OUT, "moss_richness/prediction_ch_100m.tif"))
+
+# Determine tile size for plotting
+tile_sz_m <- res(r_moss)[1]
+# Convert raster to data frame and remove NA values
+df_moss   <- as.data.frame(r_moss, xy = TRUE)
+
+# Rename the richness column and remove rows with NA values
+names(df_moss)[3] <- "richness"
+
+# Create quantile bins for richness values
+df_moss   <- df_moss[complete.cases(df_moss), ]
+df_moss$q_bin <- cut(df_moss$richness,
+  breaks = quantile(df_moss$richness, probs = seq(0, 1, length.out = n_q + 1)),
+  include.lowest = TRUE, labels = seq_len(n_q))
+
+# Create the moss richness map using ggplot2
+p_moss <- ggplot() +
+  # Plot the country boundary
+  geom_sf(data = country_ch, fill = "gray85", color = NA) +
+
+  # Plot the moss richness tiles using viridis color scale for richness deciles
+  geom_tile(data = df_moss, aes(x = x, y = y, fill = q_bin),
+            width = tile_sz_m, height = tile_sz_m) +
+  scale_fill_viridis_d(option = "viridis", name = "Richness decile", drop = FALSE) +
+
+  # Plot the lakes with a specific fill color and border
+  geom_sf(data = lakes, fill = "#b8d4e8", color = "gray40", linewidth = 0.1) +
+  coord_sf(crs = 2056, expand = FALSE) +
+
+  # Plot the country boundary again to ensure it is on top of the tiles
+  geom_sf(data = country_ch, fill = NA, color = "gray40", linewidth = 0.1) +
+
+  # Set the theme to remove axes, grid lines, and background elements for a clean map appearance
+  guides(fill = guide_legend(nrow = 1)) +
+  theme_void() +
+  theme(
+    legend.position  = "bottom",
+    legend.direction = "horizontal",
+    legend.key.size  = unit(0.35, "cm"),
+    legend.text      = element_text(size = 7, family = "Sans"),
+    legend.title     = element_text(size = 7, family = "Sans")
+  )
+p_moss
+
+# Save moss richness map
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_moss_100m_viridis.png"),
+       p_moss,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+
+### Vascular plant richness
+```{r plot-plant-100m}
+# Load vascular plant richness raster and convert to data frame
+r_plant    <- rast(file.path(DIR_MDL3_OUT, "plant_richness/prediction_ch_100m.tif"))
+
+# Determine tile size for plotting
+tile_sz_p <- res(r_plant)[1]
+# Convert raster to data frame and remove NA values
+df_plant   <- as.data.frame(r_plant, xy = TRUE)
+
+# Rename the richness column and remove rows with NA values
+names(df_plant)[3] <- "richness"
+
+# Create quantile bins for richness values
+df_plant   <- df_plant[complete.cases(df_plant), ]
+df_plant$q_bin <- cut(df_plant$richness,
+  breaks = quantile(df_plant$richness, probs = seq(0, 1, length.out = n_q + 1)),
+  include.lowest = TRUE, labels = seq_len(n_q))
+
+# Create the plant richness map using ggplot2
+p_plant <- ggplot() +
+  # Plot the country boundary
+  geom_sf(data = country_ch, fill = "gray85", color = NA) +
+
+  # Plot the plant richness tiles using viridis color scale for richness deciles
+  geom_tile(data = df_plant, aes(x = x, y = y, fill = q_bin),
+            width = tile_sz_p, height = tile_sz_p) +
+  scale_fill_viridis_d(option = "viridis", name = "Richness decile", drop = FALSE) +
+
+  # Plot the lakes with a specific fill color and border
+  geom_sf(data = lakes, fill = "#b8d4e8", color = "gray40", linewidth = 0.1) +
+  coord_sf(crs = 2056, expand = FALSE) +
+
+  # Plot the country boundary again to ensure it is on top of the tiles
+  geom_sf(data = country_ch, fill = NA, color = "gray40", linewidth = 0.1) +
+
+  # Set the theme to remove axes, grid lines, and background elements for a clean map appearance
+  guides(fill = guide_legend(nrow = 1)) +
+  theme_void() +
+  theme(
+    legend.position  = "bottom",
+    legend.direction = "horizontal",
+    legend.key.size  = unit(0.35, "cm"),
+    legend.text      = element_text(size = 7, family = "Sans"),
+    legend.title     = element_text(size = 7, family = "Sans")
+  )
+p_plant
+
+# Save plant richness map
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_plant_100m_viridis_legend.png"),
+       p_plant,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+
+### Combined figure
+```{r plot-combined-100m}
+# Extract shared viridis legend from plant map
+shared_legend <- get_legend(
+  p_plant +
+    guides(fill = guide_legend(nrow = 1)) +
+    theme(
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      legend.key.size  = unit(0.35, "cm"),
+      legend.text      = element_text(size = 7, family = "Sans"),
+      legend.title     = element_text(size = 7, family = "Sans")
+    )
+)
+
+# Maps side by side with reduced inner margins
+p_maps <- plot_grid(
+  p_moss  + theme(plot.margin = margin(0, -3, 0,  0, "mm")),
+  p_plant + theme(plot.margin = margin(0,  0, 0, -3, "mm")),
+  ncol = 2
+)
+
+# Combine maps and shared legend into a single figure
+p_combined_100m <- plot_grid(
+  p_maps, shared_legend,
+  ncol        = 1,
+  rel_heights = c(1, 0.08)
+)
+p_combined_100m
+
+# Save combined figure
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_combined_100m_viridis.png"),
+       p_combined_100m,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+
+## 100 m — Prediction uncertainty (SE)
+
+### Bryophyte SE
+```{r plot-moss-se-100m}
+# Load moss SE raster and convert to data frame
+r_moss_se    <- rast(file.path(DIR_MDL3_OUT, "moss_richness/prediction_ch_100m_se.tif"))
+
+# Determine tile size for plotting
+tile_sz_ms   <- res(r_moss_se)[1]
+# Convert raster to data frame and remove NA values
+df_moss_se   <- as.data.frame(r_moss_se, xy = TRUE)
+
+# Rename the SE column and remove rows with NA values
+names(df_moss_se)[3] <- "se"
+
+# Create quantile bins for SE values
+df_moss_se   <- df_moss_se[complete.cases(df_moss_se), ]
+df_moss_se$q_bin <- cut(df_moss_se$se,
+  breaks = quantile(df_moss_se$se, probs = seq(0, 1, length.out = n_q + 1)),
+  include.lowest = TRUE, labels = seq_len(n_q))
+
+# Create the moss SE map using ggplot2 with a custom color palette for SE deciles
+p_moss_se <- ggplot() +
+  # Plot the country boundary
+  geom_sf(data = country_ch, fill = "gray85", color = NA) +
+
+  # Plot the moss SE tiles using a custom color palette for SE deciles
+  geom_tile(data = df_moss_se, aes(x = x, y = y, fill = q_bin),
+            width = tile_sz_ms, height = tile_sz_ms) +
+  scale_fill_manual(values = se_colors, name = "SE decile", drop = FALSE) +
+
+  # Plot the lakes with a specific fill color and border
+  geom_sf(data = lakes, fill = "#b8d4e8", color = "gray40", linewidth = 0.1) +
+
+  # Plot the country boundary again to ensure it is on top of the tiles
+  geom_sf(data = country_ch, fill = NA, color = "gray40", linewidth = 0.1) +
+  
+  # Set the theme to remove axes, grid lines, and background elements for a clean map appearance
+  guides(fill = guide_legend(nrow = 1)) +
+  theme_void() +
+  theme(
+    legend.position  = "bottom",
+    legend.direction = "horizontal",
+    legend.key.size  = unit(0.35, "cm"),
+    legend.text      = element_text(size = 7, family = "Sans"),
+    legend.title     = element_text(size = 7, family = "Sans")
+  )
+p_moss_se
+
+# Save moss SE map
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_moss_se_100m_legend.png"),
+       p_moss_se,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+
+### Vascular plant SE
+```{r plot-plant-se-100m}
+# Load plant SE raster and convert to data frame
+r_plant_se   <- rast(file.path(DIR_MDL3_OUT, "plant_richness/prediction_ch_100m_se.tif"))
+
+# Determine tile size for plotting
+tile_sz_ps   <- res(r_plant_se)[1]
+# Convert raster to data frame and remove NA values
+df_plant_se  <- as.data.frame(r_plant_se, xy = TRUE)
+
+# Rename the SE column and remove rows with NA values
+names(df_plant_se)[3] <- "se"
+
+# Create quantile bins for SE values
+df_plant_se  <- df_plant_se[complete.cases(df_plant_se), ]
+df_plant_se$q_bin <- cut(df_plant_se$se,
+  breaks = quantile(df_plant_se$se, probs = seq(0, 1, length.out = n_q + 1)),
+  include.lowest = TRUE, labels = seq_len(n_q))
+
+# Create the plant SE map using ggplot2 with a custom color palette for SE deciles
+p_plant_se <- ggplot() +
+  # Plot the country boundary
+  geom_sf(data = country_ch, fill = "gray85", color = NA) +
+  
+  # Plot the plant SE tiles using a custom color palette for SE deciles
+  geom_tile(data = df_plant_se, aes(x = x, y = y, fill = q_bin),
+            width = tile_sz_ps, height = tile_sz_ps) +
+  scale_fill_manual(values = se_colors, name = "SE decile", drop = FALSE) +
+
+  # Plot the lakes with a specific fill color and border
+  geom_sf(data = lakes, fill = "#b8d4e8", color = "gray40", linewidth = 0.1) +
+  coord_sf(crs = 2056, expand = FALSE) +
+
+  # Plot the country boundary again to ensure it is on top of the tiles
+  geom_sf(data = country_ch, fill = NA, color = "gray40", linewidth = 0.1) +
+  
+  # Set the theme to remove axes, grid lines, and background elements for a clean map appearance
+  guides(fill = guide_legend(nrow = 1)) +
+  theme_void() +
+  theme(
+    legend.position  = "bottom",
+    legend.direction = "horizontal",
+    legend.key.size  = unit(0.35, "cm"),
+    legend.text      = element_text(size = 7, family = "Sans"),
+    legend.title     = element_text(size = 7, family = "Sans")
+  )
+p_plant_se
+
+# Save plant SE map
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_plant_se_100m_legend.png"),
+       p_plant_se,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+
+### Combined SE figure
+```{r plot-combined-se-100m}
+# Extract shared SE legend from plant SE map
+shared_legend_se <- get_legend(
+  p_plant_se +
+    guides(fill = guide_legend(nrow = 1)) +
+    theme(
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      legend.key.size  = unit(0.35, "cm"),
+      legend.text      = element_text(size = 6, family = "Sans"),
+      legend.title     = element_text(size = 7, family = "Sans")
+    )
+)
+
+# Maps side by side with reduced inner margins
+p_maps_se <- plot_grid(
+  p_moss_se  + theme(plot.margin = margin(0, -3, 0,  0, "mm")),
+  p_plant_se + theme(plot.margin = margin(0,  0, 0, -3, "mm")),
+  ncol = 2
+)
+
+# Combine maps and shared legend into a single figure
+p_combined_se_100m <- plot_grid(
+  p_maps_se, shared_legend_se,
+  ncol        = 1,
+  rel_heights = c(1, 0.08)
+)
+p_combined_se_100m
+
+# Save combined SE figure
+ggsave(file.path(DIR_PLOTS, "prediction/prediction_combined_se_100m.png"),
+       p_combined_se_100m,
+       width = REPORT_WIDTH_IN, height = REPORT_WIDTH_IN * 0.38, dpi = 800)
+```
+

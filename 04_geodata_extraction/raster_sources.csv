@@ -1,0 +1,49 @@
+# ==============================================================================
+# raster_sources.csv
+# Master config for extract_raster.r (explicit single-file rasters only).
+# Climate (Bio1-Bio19) is handled separately in extract_bioclim_sliding.r 
+# Resulting in a panel dataset (multi-band + multi-year panel).
+#
+# Columns:
+#   group      : logical grouping — all rows in a group are saved to one RDS
+#   var_name   : column name in the output dataframe
+#   raster_path: path to the .tif file, relative to DATA_ROOT
+#   output_rds : output RDS path, relative to DATA_ROOT
+#
+# To add a new raster: append a row. No code changes needed.
+# ==============================================================================
+group,var_name,raster_path,output_rds
+# --- Bioclimate: see extract_bioclim_sliding.r (multi-band + multi-year panel) -
+# --- Topography (DHM25) -------------------------------------------------------
+topo,elevation,env/landscape_topography/processed/dhm25/dhm25_elevation_lv95.tif,bdm/processed/env_extracted/plot_dhm25.rds
+topo,slope,env/landscape_topography/processed/dhm25/dhm25_slope_lv95.tif,bdm/processed/env_extracted/plot_dhm25.rds
+topo,aspect,env/landscape_topography/processed/dhm25/dhm25_aspect_lv95.tif,bdm/processed/env_extracted/plot_dhm25.rds
+topo,tpi,env/landscape_topography/processed/dhm25/dhm25_tpi_lv95.tif,bdm/processed/env_extracted/plot_dhm25.rds
+topo,twi,env/landscape_topography/processed/dhm25/dhm25_twi_lv95.tif,bdm/processed/env_extracted/plot_dhm25.rds
+# --- Land use -----------------------------------------------------------------
+landuse,AS_4,env/land_use/processed/arealstatistik/arealstatistik_AS_4_100m.tif,bdm/processed/env_extracted/plot_arealstatistik.rds
+landuse,LU_4,env/land_use/processed/arealstatistik/arealstatistik_LU_4_100m.tif,bdm/processed/env_extracted/plot_arealstatistik.rds
+landuse,LU_10,env/land_use/processed/arealstatistik/arealstatistik_LU_10_100m.tif,bdm/processed/env_extracted/plot_arealstatistik.rds
+mowing,mow_int,env/land_use/processed/grassland_intensity/grassland-use_intensity_2021_ch_10m_lv95.tif,bdm/processed/env_extracted/plot_mowing_int.rds
+# --- Soil (kobo) --------------------------------------------------------------
+soil,soc_stock_0_120,env/soil/raw/kobo/Geodaten_SOC_CH/CH_SOCstock_0_120/CH_SOCstock_0_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,humus_0_30,env/soil/raw/kobo/Geodaten_Humus_CH/CH_Humus_0_30/CH_humus_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,humus_30_60,env/soil/raw/kobo/Geodaten_Humus_CH/CH_Humus_30_60/CH_humus_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,humus_60_120,env/soil/raw/kobo/Geodaten_Humus_CH/CH_Humus_60_120/CH_humus_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,kak_0_30,env/soil/raw/kobo/Geodaten_KAK_CH/CH_KAK_0_30/CH_KAK_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,kak_30_60,env/soil/raw/kobo/Geodaten_KAK_CH/CH_KAK_30_60/CH_KAK_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,kak_60_120,env/soil/raw/kobo/Geodaten_KAK_CH/CH_KAK_60_120/CH_KAK_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ph_0_30,env/soil/raw/kobo/Geodaten_pH_CH/CH_pH_0_30/CH_pH_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ph_30_60,env/soil/raw/kobo/Geodaten_pH_CH/CH_pH_30_60/CH_pH_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ph_60_120,env/soil/raw/kobo/Geodaten_pH_CH/CH_pH_60_120/CH_pH_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,sand_0_30,env/soil/raw/kobo/Geodaten_Sand_CH/CH_Sand_0_30/CH_Sand_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,sand_30_60,env/soil/raw/kobo/Geodaten_Sand_CH/CH_Sand_30_60/CH_Sand_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,sand_60_120,env/soil/raw/kobo/Geodaten_Sand_CH/CH_Sand_60_120/CH_Sand_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,schluff_0_30,env/soil/raw/kobo/Geodaten_Schluff_CH/CH_Schluff_0_30/CH_Schluff_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,schluff_30_60,env/soil/raw/kobo/Geodaten_Schluff_CH/CH_Schluff_30_60/CH_Schluff_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,schluff_60_120,env/soil/raw/kobo/Geodaten_Schluff_CH/CH_Schluff_60_120/CH_Schluff_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ton_0_30,env/soil/raw/kobo/Geodaten_Ton_CH/CH_Ton_0_30/CH_ton_0_30.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ton_30_60,env/soil/raw/kobo/Geodaten_Ton_CH/CH_Ton_30_60/CH_ton_30_60.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+soil,ton_60_120,env/soil/raw/kobo/Geodaten_Ton_CH/CH_Ton_60_120/CH_ton_60_120.tif,bdm/processed/env_extracted/plot_soil_kobo.rds
+# --- Habitat/Biotic -----------------------------------------------------------
+habbiotic,veg_height,env/habitat_biotic/raw/vegetation_height/landesforstinventar-vegetationshoehenmodell_2021_stereo_2056.tif,bdm/processed/env_extracted/plot_veg_height.rds

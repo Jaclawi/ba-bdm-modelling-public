@@ -1,0 +1,261 @@
+# Load Libraries
+```{r}
+library(tidyverse)
+library(sf)
+library(terra)
+library(DataExplorer)
+library(ggcorrplot)
+```
+
+# Richness Data processing
+# Load Richness Data
+```{r}
+source("_config.r")
+
+# Load alpha richness for mosses and plants
+moss_richness <- readRDS(PATH_MOSS_RICHNESS)
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)
+
+head(moss_richness)
+head(plant_richness)
+
+dim(moss_richness) # 7'105 x 3
+dim(plant_richness) # 7'137 x 3
+```
+
+## Load Plot Coordinates
+```{r}
+# Load plot coordinates
+plot_coordinates <- readRDS(PATH_PLOT_COORDS_RDS)
+
+head(plot_coordinates)
+```
+
+# Environmental Data processing
+## Load Environmental Data
+```{r}
+# Load extracted environmental variables
+env_arealstatistik <- readRDS(PATH_ENV_LANDUSE)
+env_dhm25 <- readRDS(PATH_ENV_TOPO)
+env_habitatmap <- readRDS(PATH_ENV_HABITAT)
+env_hab_landscape <- readRDS(PATH_ENV_HAB_WIDE_2M)
+env_meteoswiss <- readRDS(PATH_ENV_CLIMATE)
+env_soil_kobo_interp <- readRDS(PATH_ENV_SOIL_KOBO_INTERP)
+
+head(env_arealstatistik)
+head(env_dhm25)
+head(env_habitatmap)
+head(env_hab_landscape)
+head(env_meteoswiss)
+head(env_soil_kobo_interp)
+
+# Print the amount of rows per environmental dataset to check if they match the plot coordinates
+cat("Number of rows in plot_coordinates:", nrow(plot_coordinates), "\n")
+cat("Number of rows in env_arealstatistik:", nrow(env_arealstatistik), "\n")
+cat("Number of rows in env_dhm25:", nrow(env_dhm25), "\n")
+cat("Number of rows in env_habitatmap:", nrow(env_habitatmap), "\n")
+cat("Number of rows in env_hab_landscape:", nrow(env_hab_landscape), "\n")
+cat("Number of rows in env_meteoswiss:", nrow(env_meteoswiss), "\n")
+cat("Number of rows in env_soil_kobo_interp:", nrow(env_soil_kobo_interp), "\n")
+```
+
+## Join Environmental Data
+```{r}
+# Combine all static environmental baseline data and coordinates
+env_data <- plot_coordinates |>
+  left_join(env_arealstatistik, by = "aID_STAO") |>
+  left_join(env_dhm25, by = "aID_STAO") |>
+  left_join(env_habitatmap, by = "aID_STAO") |>
+  left_join(env_hab_landscape, by = "aID_STAO") |>
+  left_join(env_meteoswiss, by = "aID_STAO") |>
+  left_join(env_soil_kobo_interp, by = "aID_STAO")
+View(env_data)
+```
+
+## Turn numerics into binned categories
+```{r}
+# Bin aspect variable from dhm25 data
+# Categories: North (340-50°), South-East (50-160°), South (160-250°), South-West (250-340°)
+env_data <- env_data |>
+  mutate(aspect_factor = factor(
+    case_when(
+      aspect >= 337.5 | aspect < 22.5  ~ "N",
+      aspect >= 22.5  & aspect < 67.5  ~ "NE",
+      aspect >= 67.5  & aspect < 112.5 ~ "E",
+      aspect >= 112.5 & aspect < 157.5 ~ "SE",
+      aspect >= 157.5 & aspect < 202.5 ~ "S",
+      aspect >= 202.5 & aspect < 247.5 ~ "SW",
+      aspect >= 247.5 & aspect < 292.5 ~ "W",
+      aspect >= 292.5 & aspect < 337.5 ~ "NW"
+    ), 
+    levels = c("N", "NE", "E", "SE", "S", "SW", "W", "NW")))
+
+env_data$aspect_factor
+
+# Done according to:
+# https://www.supergeotek.com/SpatialAnalyst_ENG_HTML/aspect.htm
+```
+
+## Turn categorical variables into factors
+```{r}
+# Auto-convert all character columns to factors
+env_data <- env_data |>
+  mutate(across(where(is.character), as.factor))
+
+# Grab all TypoCH columns
+typoch_columns <- grep("TypoCH", names(env_data), value = TRUE)
+
+# Convert other known categorical variables and typoch columns to factors
+env_data <- env_data |>
+  mutate(across(all_of(c("AS_4", "LU_4","LU_10", typoch_columns)), as.factor))
+
+# Print the data type per column
+column_types <- sapply(env_data, class)
+print(column_types)
+```
+
+## Reduce the number of columns
+Since i have a huge amount of predictors i try to reduce the number of columns by focusing on the 2nd level of TypoCH and Land usage.
+Also i create data subsets based on the temporal aggregation levels in MeteoSwiss data.
+I also remove columns which are not relevant for modelling such as coordinates, plotID etc.
+```{r}
+# Remove coordinates
+env_data <- env_data |>
+  select(-XKoord_LV95, -YKoord_LV95)
+
+# Remove TypoCH text based columns
+env_data <- env_data |>
+  select(-matches("TypoCH_NUM"), -matches("TypoCH_DE_1st"), -matches("TypoCH_DE_2nd"))
+
+# Remove TypoCH_2nd, only the first level is used in attempt 1
+env_data <- env_data |>
+  select(-matches("TypoCH_2nd_code"))
+
+# Remove LU_4 and AS_4
+env_data <- env_data |>
+  select(-LU_4, -AS_4)
+
+# Remove slope as this has been turned into factor
+env_data <- env_data |>
+  select(-slope)
+```
+
+## Combine with Richness Data
+```{r}
+# Join the environmental base data and filter to 2021-2025 directly
+moss_model_data <- moss_richness |>
+  filter(yearMoos >= 2021 & yearMoos <= 2025) |>
+  left_join(env_data, by = "aID_STAO")
+moss_model_data
+
+plant_model_data <- plant_richness |>
+  filter(yearPl >= 2021 & yearPl <= 2025) |>
+  left_join(env_data, by = "aID_STAO")
+plant_model_data
+
+dim(moss_model_data) # 1'442 x 408
+dim(plant_model_data) # 1'449 x 408
+```
+
+## Save the datasets
+```{r}
+# Save the combined datasets for modeling
+saveRDS(moss_model_data, PATH_MDL1_MOSS_DATA)
+saveRDS(plant_model_data, PATH_MDL1_PLANT_DATA)
+```
+
+# Explorative data analysis
+## Clean categorical strings to prevent multibyte string errors in DataExplorer
+```{r}
+# Add the TypoCH_1st_DE column back to the dataset for EDA purposes
+moss_model_data <- moss_model_data |>
+  left_join(env_habitatmap |> select(aID_STAO, TypoCH_DE_1st), by = "aID_STAO")
+plant_model_data <- plant_model_data |>
+  left_join(env_habitatmap |> select(aID_STAO, TypoCH_DE_1st), by = "aID_STAO")
+
+# Transform the column to factor
+moss_model_data <- moss_model_data |>
+  mutate(TypoCH_DE_1st = as.factor(TypoCH_DE_1st))
+plant_model_data <- plant_model_data |>
+  mutate(TypoCH_DE_1st = as.factor(TypoCH_DE_1st))
+
+# Clean all categorical strings to strictly use ASCII characters
+# First transliterate common Swiss accents/umlauts, then replace any remaining special characters with _
+# This prevents invalid multibyte string errors in make.names() during DataExplorer report generation
+umlaut_map <- c("ä" = "ae", "ö" = "oe", "ü" = "ue",
+                "Ä" = "Ae", "Ö" = "Oe", "Ü" = "Ue",
+                "é" = "e",  "è" = "e",  "ê" = "e",
+                "à" = "a",  "â" = "a",  "ç" = "c")
+clean_str <- function(x) stringr::str_replace_all(stringr::str_replace_all(x, umlaut_map), "[^a-zA-Z0-9_]", "_")
+
+moss_model_data <- moss_model_data |>
+  mutate(across(where(is.character), clean_str)) |>
+  mutate(across(where(is.factor), ~ {
+    factor(.x, levels = levels(.x), labels = clean_str(levels(.x)))
+  }))
+  s
+plant_model_data <- plant_model_data |>
+  mutate(across(where(is.character), clean_str)) |>
+  mutate(across(where(is.factor), ~ {
+    factor(.x, levels = levels(.x), labels = clean_str(levels(.x)))
+  }))
+```
+
+## Select only yearly aggregated variables for the year 2021-2025
+```{r}
+# Reduce the dataset by selecting only relevant features for EDA
+moss_model_data_reduced <- moss_model_data |>
+  select(-aID_STAO, -matches("_m\\d{2}_"), -ends_with("_250"), -ends_with("_50"), -ends_with("_25"), -matches("_20yr"), -matches("_5yr"), -matches("TypoCH_NUM"), -matches("TypoCH_1st_code"), -matches("TypoCH_2nd_code"), -aspect)
+View(moss_model_data_reduced)
+dim(moss_model_data_reduced) # 1442 x 50
+
+plant_model_data_reduced <- plant_model_data |>
+  select(-aID_STAO, -matches("_m\\d{2}_"), -ends_with("_250"), -ends_with("_50"), -ends_with("_25"), -matches("_20yr"), -matches("_5yr"), -matches("TypoCH_NUM"), -matches("TypoCH_1st_code"), -matches("TypoCH_2nd_code"), -aspect)
+View(plant_model_data_reduced)
+dim(plant_model_data_reduced) # 1449 x 50
+```
+
+## Plot a correlation matrix of the reduced datasets
+```{r}
+library(ragg)
+
+# Use ragg PNG device so UTF-8 characters in axis labels render correctly on
+# Windows (avoids "conversion failure from UTF-8 to cp1252" errors)
+knitr::opts_chunk$set(dev = "ragg_png")
+
+# Plot a correlation matrix of the reduced datasets using ggplot2 and ggcorrplot
+# For moss model data (Numerical Features)
+moss_num_data <- moss_model_data_reduced |> dplyr::select(where(is.numeric), -richness_moss, -yearMoos)
+moss_cor_matrix <- cor(moss_num_data, use = "pairwise.complete.obs")
+p_moss_num <- ggcorrplot(moss_cor_matrix, method = "circle", type = "lower", lab = TRUE, title = "Numeric Correlation Matrix (Moss)", ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+print(p_moss_num)
+ggsave(file.path(DIR_MDL1_PLOTS, "moss_numeric_cor.png"), plot = p_moss_num, width = 12, height = 10, bg = "white")
+
+# For moss model data (Categorical Features via Dummy-Encoding)
+moss_cat_data <- model.matrix(~ 0 + ., data = moss_model_data_reduced |> dplyr::select(where(is.factor)))
+moss_cat_cor_matrix <- cor(moss_cat_data, use = "pairwise.complete.obs")
+p_moss_cat <- ggcorrplot(moss_cat_cor_matrix, method = "circle", type = "lower", lab = FALSE, title = "Categorical Correlation Matrix (Moss)", ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+print(p_moss_cat)
+ggsave(file.path(DIR_MDL1_PLOTS, "moss_categorical_cor.png"), plot = p_moss_cat, width = 16, height = 14, bg = "white")
+
+# For plant model data (Numerical Features)
+plant_num_data <- plant_model_data_reduced |> dplyr::select(where(is.numeric), -richness_plant, -yearPl)
+plant_cor_matrix <- cor(plant_num_data, use = "pairwise.complete.obs")
+p_plant_num <- ggcorrplot(plant_cor_matrix, method = "circle", type = "lower", lab = TRUE, title = "Numeric Correlation Matrix (Plants)", ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+print(p_plant_num)
+ggsave(file.path(DIR_MDL1_PLOTS, "plant_numeric_cor.png"), plot = p_plant_num, width = 12, height = 10, bg = "white")
+
+# For plant model data (Categorical Features via Dummy-Encoding)
+plant_cat_data <- model.matrix(~ 0 + ., data = plant_model_data_reduced |> dplyr::select(where(is.factor)))
+plant_cat_cor_matrix <- cor(plant_cat_data, use = "pairwise.complete.obs")
+p_plant_cat <- ggcorrplot(plant_cat_cor_matrix, method = "circle", type = "lower", lab = FALSE, title = "Categorical Correlation Matrix (Plants)", ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+print(p_plant_cat)
+ggsave(file.path(DIR_MDL1_PLOTS, "plant_categorical_cor.png"), plot = p_plant_cat, width = 16, height = 14, bg = "white")
+```
+
+## Create a DataExplorer report
+```{r}
+# Use DataExplorer to create a report of the relationship between richness and environmental variables
+DataExplorer::create_report(moss_model_data_reduced, y = "richness_moss", output_file = file.path(DIR_MDL1_REPORTS, "moss_model_1_data_report.html"))
+DataExplorer::create_report(plant_model_data_reduced, y = "richness_plant", output_file = file.path(DIR_MDL1_REPORTS, "plant_model_1_data_report.html"))
+```

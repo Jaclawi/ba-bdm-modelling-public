@@ -1,0 +1,216 @@
+# Attempt 2 — Richness Slope Modelling: Preprocessing
+For each BDM plot, compute OLS richness slopes (species/year) and per-month
+climatic trends (2001–2025) as predictors. One row per plot:
+`total_change_pct` ~ climate slopes + baselines + static env
+
+# Load Libraries
+```{r}
+library(tidyverse)
+library(sf)
+library(DataExplorer)
+library(ggcorrplot)
+
+source("_config.r")
+```
+
+# Richness Data
+```{r}
+moss_richness  <- readRDS(PATH_MOSS_RICHNESS)   # aID_STAO, yearMoos, richness_moss
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)  # aID_STAO, yearPl,   richness_plant
+
+head(moss_richness)
+head(plant_richness)
+
+dim(moss_richness)
+dim(plant_richness)
+```
+
+# Climate Panel
+```{r}
+clim_panel <- readRDS(PATH_CLIM_MONTHLY_PANEL)  # aID_STAO, year, month, tabs, tmax, tmin, rhires, srel, sisdir
+
+head(clim_panel)
+cat("Climate panel dimensions:", dim(clim_panel), "\n")
+cat("Years available:", min(clim_panel$year), "–", max(clim_panel$year), "\n")
+```
+
+# Static Environmental Data
+## Load Environmental Data
+```{r}
+# Climate comes from the panel (slopes + baseline), not from the aggregated MeteoSwiss rasters
+env_arealstatistik   <- readRDS(PATH_ENV_LANDUSE)
+env_dhm25            <- readRDS(PATH_ENV_TOPO)
+env_habitatmap       <- readRDS(PATH_ENV_HABITAT)
+env_hab_landscape    <- readRDS(PATH_ENV_HAB_WIDE_2M)
+env_soil_kobo_interp <- readRDS(PATH_ENV_SOIL_KOBO_INTERP)
+
+head(env_arealstatistik)
+head(env_dhm25)
+head(env_habitatmap)
+head(env_hab_landscape)
+head(env_soil_kobo_interp)
+
+plot_coordinates <- readRDS(PATH_PLOT_COORDS_RDS)
+cat("Number of rows in plot_coordinates:", nrow(plot_coordinates), "\n")
+cat("Number of rows in env_arealstatistik:", nrow(env_arealstatistik), "\n")
+cat("Number of rows in env_dhm25:", nrow(env_dhm25), "\n")
+cat("Number of rows in env_habitatmap:", nrow(env_habitatmap), "\n")
+cat("Number of rows in env_hab_landscape:", nrow(env_hab_landscape), "\n")
+cat("Number of rows in env_soil_kobo_interp:", nrow(env_soil_kobo_interp), "\n")
+```
+
+## Join Environmental Data
+```{r}
+env_data <- plot_coordinates |>
+  left_join(env_arealstatistik,   by = "aID_STAO") |>
+  left_join(env_dhm25,            by = "aID_STAO") |>
+  left_join(env_habitatmap,       by = "aID_STAO") |>
+  left_join(env_hab_landscape,    by = "aID_STAO") |>
+  left_join(env_soil_kobo_interp, by = "aID_STAO")
+View(env_data)
+```
+
+## Turn numerics into binned categories
+```{r}
+env_data <- env_data |>
+  mutate(aspect_factor = factor(
+    case_when(
+      aspect >= 337.5 | aspect < 22.5  ~ "N",
+      aspect >= 22.5  & aspect < 67.5  ~ "NE",
+      aspect >= 67.5  & aspect < 112.5 ~ "E",
+      aspect >= 112.5 & aspect < 157.5 ~ "SE",
+      aspect >= 157.5 & aspect < 202.5 ~ "S",
+      aspect >= 202.5 & aspect < 247.5 ~ "SW",
+      aspect >= 247.5 & aspect < 292.5 ~ "W",
+      aspect >= 292.5 & aspect < 337.5 ~ "NW"
+    ),
+    levels = c("N", "NE", "E", "SE", "S", "SW", "W", "NW")))
+
+env_data$aspect_factor
+```
+
+## Turn categorical variables into factors
+```{r}
+env_data <- env_data |>
+  mutate(across(where(is.character), as.factor))
+
+typoch_columns <- grep("TypoCH", names(env_data), value = TRUE)
+
+env_data <- env_data |>
+  mutate(across(all_of(c("AS_4", "LU_4", "LU_10", typoch_columns)), as.factor))
+
+column_types <- sapply(env_data, class)
+print(column_types)
+```
+
+## Reduce the number of columns
+```{r}
+env_data <- env_data |>
+  select(-XKoord_LV95, -YKoord_LV95) |>
+  select(-matches("TypoCH_NUM"), -matches("TypoCH_DE_1st"), -matches("TypoCH_DE_2nd")) |>
+  select(-matches("TypoCH_2nd_code")) |>
+  select(-LU_4, -AS_4) |>
+  select(-slope)
+```
+
+# Compute per-plot climate features (slopes + baseline)
+```{r}
+compute_climate_features <- function() {
+  clim_vars <- c("tabs", "tmax", "tmin", "rhires", "srel", "sisdir")
+
+  clim_panel |>
+    filter(year >= 2001 & year <= 2025) |>
+    tidyr::pivot_longer(cols = all_of(clim_vars), names_to = "clim_var", values_to = "value") |>
+    group_by(aID_STAO, clim_var, month) |>
+    summarise(
+      slope    = coef(lm(value ~ year))[["year"]],
+      baseline = mean(value, na.rm = TRUE),
+      .groups  = "drop"
+    ) |>
+    tidyr::pivot_wider(
+      names_from  = c(clim_var, month),
+      values_from = c(slope, baseline),
+      names_glue  = "{.value}_{clim_var}_m{month}"
+    )
+}
+
+clim_features <- compute_climate_features()
+
+cat("Climate features:", nrow(clim_features), "×", ncol(clim_features), "\n")
+```
+
+# Compute richness slopes and target variable
+```{r}
+moss_richness_summary <- moss_richness |>
+  group_by(aID_STAO) |>
+  filter(n() >= 3) |>
+  summarise(
+    slope_year        = coef(lm(richness_moss ~ yearMoos))[["yearMoos"]],
+    intercept         = coef(lm(richness_moss ~ yearMoos))[["(Intercept)"]],
+    n_obs             = n(),
+    year_min          = min(yearMoos, na.rm = TRUE),
+    year_max          = max(yearMoos, na.rm = TRUE),
+    mean_richness     = mean(richness_moss, na.rm = TRUE),
+    baseline_richness = richness_moss[which.min(yearMoos)],
+    .groups           = "drop"
+  ) |>
+  mutate(
+    fitted_start     = intercept + slope_year * year_min,
+    fitted_end       = intercept + slope_year * year_max,
+    total_change_pct = ifelse(mean_richness == 0, 0,
+                              ((fitted_end - fitted_start) / mean_richness) * 100)
+  )
+
+plant_richness_summary <- plant_richness |>
+  group_by(aID_STAO) |>
+  filter(n() >= 3) |>
+  summarise(
+    slope_year        = coef(lm(richness_plant ~ yearPl))[["yearPl"]],
+    intercept         = coef(lm(richness_plant ~ yearPl))[["(Intercept)"]],
+    n_obs             = n(),
+    year_min          = min(yearPl, na.rm = TRUE),
+    year_max          = max(yearPl, na.rm = TRUE),
+    mean_richness     = mean(richness_plant, na.rm = TRUE),
+    baseline_richness = richness_plant[which.min(yearPl)],
+    .groups           = "drop"
+  ) |>
+  mutate(
+    fitted_start     = intercept + slope_year * year_min,
+    fitted_end       = intercept + slope_year * year_max,
+    total_change_pct = ifelse(mean_richness == 0, 0,
+                              ((fitted_end - fitted_start) / mean_richness) * 100)
+  )
+
+cat("Moss  richness summary:", nrow(moss_richness_summary),  "plots\n")
+cat("Plant richness summary:", nrow(plant_richness_summary), "plots\n")
+cat("Moss  NA in total_change_pct:", sum(is.na(moss_richness_summary$total_change_pct)), "\n")
+cat("Plant NA in total_change_pct:", sum(is.na(plant_richness_summary$total_change_pct)), "\n")
+```
+
+# Assemble richness slopes datasets
+```{r}
+moss_richness_slopes_data <- moss_richness_summary |>
+  select(aID_STAO, total_change_pct, baseline_richness) |>
+  left_join(clim_features, by = "aID_STAO") |>
+  left_join(env_data,      by = "aID_STAO") |>
+  select(-aID_STAO)
+
+plant_richness_slopes_data <- plant_richness_summary |>
+  select(aID_STAO, total_change_pct, baseline_richness) |>
+  left_join(clim_features, by = "aID_STAO") |>
+  left_join(env_data,      by = "aID_STAO") |>
+  select(-aID_STAO)
+
+cat("Moss  richness slopes dataset:", nrow(moss_richness_slopes_data),  "×", ncol(moss_richness_slopes_data),  "\n")
+cat("Plant richness slopes dataset:", nrow(plant_richness_slopes_data), "×", ncol(plant_richness_slopes_data), "\n")
+cat("NA rows — moss: ",  sum(!complete.cases(moss_richness_slopes_data)),  "\n")
+cat("NA rows — plant:", sum(!complete.cases(plant_richness_slopes_data)), "\n")
+
+View(moss_richness_slopes_data)
+```
+
+# Save richness slopes datasets
+```{r}
+saveRDS(moss_richness_slopes_data,  PATH_MDL2_MOSS_DATA)
+saveRDS(plant_richness_slopes_data, PATH_MDL2_PLANT_DATA)
+```

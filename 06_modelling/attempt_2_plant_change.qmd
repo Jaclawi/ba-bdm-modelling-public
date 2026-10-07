@@ -1,0 +1,153 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load preprocessed plant model data (slopes + climate features + static env, one row per plot)
+plant_data <- readRDS(PATH_MDL2_PLANT_DATA)
+```
+
+# Data preparation
+## Check dimensions and remove incomplete rows
+```{r}
+dim(plant_data) # 1442 x 187
+View(plant_data)
+```
+
+# Species change modelling
+## Train test split
+```{r}
+set.seed(123)
+train_idx          <- caret::createDataPartition(plant_data$total_change_pct, p = 0.8, list = FALSE)
+plant_change_train <- plant_data[ train_idx, ]
+plant_change_test  <- plant_data[-train_idx, ]
+```
+
+## Hyperparameter tuning, mtry and min.node.size
+```{r}
+train_control <- caret::trainControl(
+  method          = "repeatedcv",
+  number          = 5,
+  repeats         = 10,
+  savePredictions = "final",
+  returnResamp    = "all"
+)
+
+set.seed(123)
+rf_plant_change <- caret::train(
+  total_change_pct ~ .,
+  data        = plant_data,
+  method      = "ranger",
+  importance  = "none",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = floor(ncol(plant_data) / 3),
+    splitrule     = "variance",
+    min.node.size = 5
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+rf_plant_change
+rf_plant_change$results
+rf_plant_change$resample
+
+# Manual summary across all folds/repeats
+resamp <- rf_plant_change$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+
+saveRDS(rf_plant_change, file = file.path(DIR_MDL2_OUT, "rf_plant_change_tune.rds"))
+write.csv(rf_plant_change$results, file = file.path(DIR_MDL2_OUT, "rf_plant_change_tune_ranking.csv"), row.names = FALSE)
+```
+
+## Fit final model with best hyperparameters
+```{r}
+best_mtry     <- rf_plant_change_tune$bestTune$mtry
+best_nodesize <- rf_plant_change_tune$bestTune$min.node.size
+
+rf_plant_change <- ranger::ranger(
+  total_change_pct ~ .,
+  data          = plant_change_train,
+  num.trees     = 500,
+  mtry          = best_mtry,
+  min.node.size = best_nodesize,
+  splitrule     = "variance",
+  importance    = "permutation",
+  num.threads   = max(1, parallel::detectCores() - 1),
+  seed          = 123
+)
+
+rf_plant_change
+
+# Save the model
+saveRDS(rf_plant_change, file = file.path(DIR_MDL2_OUT, "rf_plant_change.rds"))
+```
+
+### Evaluate on test data
+```{r}
+# Predict on test data
+rf_plant_change_test_pred <- predict(rf_plant_change, data = plant_change_test)
+
+# Calculate performance metrics
+r2_plant_change  <- 1 - sum((rf_plant_change_test_pred$predictions - plant_change_test$total_change_pct)^2) /
+                        sum((plant_change_test$total_change_pct - mean(plant_change_test$total_change_pct))^2)
+mse_plant_change <- mean((rf_plant_change_test_pred$predictions - plant_change_test$total_change_pct)^2)
+
+r2_plant_change
+mse_plant_change
+```
+
+## Fit model using cv
+```{r}
+rf_plant_change_full_cv <- caret::train(
+  total_change_pct ~ .,
+  data        = plant_data,
+  method      = "ranger",
+  importance  = "none",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = floor(ncol(plant_data) / 3),
+    splitrule     = "variance",
+    min.node.size = 5
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE,
+  seed = 123,
+)
+
+rf_plant_change_full_cv
+
+resamp <- rf_plant_change_full_cv$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+
+#           metric        mean         sd
+#RMSE         RMSE 59.24041297 6.00263121
+#Rsquared Rsquared  0.06980934 0.03575042
+#MAE           MAE 37.16920831 2.25025511
+
+# Save the cv model and results
+saveRDS(rf_plant_change_full_cv, file = file.path(DIR_MDL2_OUT, "rf_plant_change_full_cv.rds"))
+write.csv(rf_plant_change_full_cv$results, file = file.path(DIR_MDL2_OUT, "rf_plant_change_full_cv_results.csv"), row.names = FALSE)
+```

@@ -1,0 +1,408 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load plant model data
+plant_data <- readRDS(PATH_MDL1_PLANT_DATA)
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)
+```
+
+# Data preparation
+## Remove target column and plot ID
+```{r}
+# Remove year and ID columns
+plant_data <- plant_data |>
+  dplyr::select(-yearPl, -aID_STAO)
+
+# Keep only climate variables for the 15 year aggregate
+plant_data <- plant_data |>
+  dplyr::select(-dplyr::matches("_(5|10|20|30)yr$"))
+
+dim(plant_data) # 1449 x 120
+```
+
+# Species richness modelling Random forest
+## Train test split
+```{r}
+set.seed(123)
+train_idx <- caret::createDataPartition(plant_data$richness_plant, p = 0.8, list = FALSE)
+plant_train <- plant_data[train_idx, ]
+plant_test  <- plant_data[-train_idx, ]
+```
+
+## Fit model with hyperparameter tuning, mtry and min.node.size
+In this step i try to find the optimal mtry and min.node.size values for the random forest model using caret's train function with repeated cross-validation. 
+Mtry is a hyperparameter that often significantly impacts the performance of random forest models, as it controls the number of predictors considered at each split. Min.node.size is another important hyperparameter that determines the minimum number of samples required to split a node, affecting the model's complexity and performance.
+I use a repeated cross-validation approach to ensure that the tuning process is robust and not overly influenced by random variations in the data splits.
+```{r}
+# Define hyper parameters for the random forest model
+
+# Repeated CV for robust tuning
+train_control <- caret::trainControl(
+  method = "repeatedcv",
+  number = 5,          # 5-fold CV
+  repeats = 10,        # repeated 10 times
+  savePredictions = "final",
+  returnResamp = "all"
+)
+
+# Tune mtry only, fix trees high for stable importance
+plant_grid <- base::expand.grid(
+  mtry = c(10, 20, floor(ncol(plant_train) / 3), floor(ncol(plant_train) * 0.75), ncol(plant_train) - 1), # Explore a range of mtry values
+  splitrule = "variance",
+  min.node.size = c(3, 5, 7, 10) # Explore different node sizes for better performance
+)
+
+# Train model with repeated CV
+rf_plant_tune <- caret::train(
+  richness_plant ~ .,
+  set.seed(123), # Set seed for reproducibility
+  method = "ranger",
+  importance = "none", # We will assess importance later with the final model
+  data = plant_train, # Use only training data for tuning
+  num.trees = 500,   # fixed high for stable forest
+  trControl = train_control,
+  tuneGrid = plant_grid,
+  na.action = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose = TRUE
+)
+
+# Save the tuned model
+saveRDS(rf_plant_tune, file = file.path(DIR_MDL1_OUT, "rf_plant_tune.rds"))
+
+# Save the mtry ranking table
+write.csv(rf_plant_tune$results, file = file.path(DIR_MDL1_OUT, "rf_plant_tune_ranking.csv"), row.names = FALSE)
+```
+
+## Assess OOB performance across different numbers of trees
+```{r}
+# Evaluate OOB performance across different numbers of trees
+n_trees_values <- c(5, 20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+
+oob_metrics <- lapply(n_trees_values, function(n_trees) {
+  rf_tmp <- ranger::ranger(
+    richness_plant ~ .,
+    data = plant_train,
+    num.trees = n_trees,
+    mtry = floor(ncol(plant_train) / 3), # The best mtry from tuning
+    min.node.size = 5, # The best min.node.size from tuning
+    splitrule = "variance",
+    importance = "none",
+    num.threads = max(1, parallel::detectCores() - 1),
+    seed = 123 # Set seed for reproducibility
+  )
+
+  mse_oob <- rf_tmp$prediction.error
+  r2_oob <- rf_tmp$r.squared
+
+  data.frame(
+    n_trees = n_trees,
+    oob_mse = mse_oob,
+    oob_r2 = r2_oob
+  )
+})
+
+# Combine OOB metrics into a single data frame
+oob_metrics_df <- dplyr::bind_rows(oob_metrics)
+
+# Save OOB metrics for analysis
+write.csv(oob_metrics_df, file = file.path(DIR_MDL1_OUT, "rf_plant_tune_oob_tree_metrics.csv"), row.names = FALSE)
+```
+
+### Plot OOB MSE and R2 across different numbers of trees
+```{r}
+# Calculate scaling parameters for plotting OOB MSE and R2 on the same plot
+mse_min <- min(oob_metrics_df$oob_mse, na.rm = TRUE)
+mse_max <- max(oob_metrics_df$oob_mse, na.rm = TRUE)
+r2_min <- min(oob_metrics_df$oob_r2, na.rm = TRUE)
+r2_max <- max(oob_metrics_df$oob_r2, na.rm = TRUE)
+
+oob_metrics_df <- oob_metrics_df |>
+  dplyr::mutate(
+    oob_r2_scaled = (oob_r2 - r2_min) / (r2_max - r2_min) * (mse_max - mse_min) + mse_min
+  )
+
+ggplot(oob_metrics_df, ggplot2::aes(x = n_trees)) +
+  geom_line(ggplot2::aes(y = oob_mse, color = "OOB MSE"), linewidth = 1) +
+  geom_point(ggplot2::aes(y = oob_mse, color = "OOB MSE"), size = 2) +
+  geom_line(ggplot2::aes(y = oob_r2_scaled, color = "OOB R2"), linewidth = 1) +
+  geom_point(ggplot2::aes(y = oob_r2_scaled, color = "OOB R2"), size = 2) +
+  scale_y_continuous(
+    name = "OOB MSE",
+    sec.axis = ggplot2::sec_axis(
+      ~ (. - mse_min) / (mse_max - mse_min) * (r2_max - r2_min) + r2_min,
+      name = "OOB R2"
+    )
+  ) +
+  scale_color_manual(values = c("OOB MSE" = "steelblue", "OOB R2" = "darkgreen")) +
+  labs(
+    title = "OOB Metrics by Number of Trees",
+    x = "Number of Trees",
+    color = "Metric"
+  ) +
+  theme_minimal() +
+  theme(aspect.ratio = 0.6)
+
+# Save the OOB metrics plot
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_plant_tune_oob_tree_metrics.png"), width = 8, height = 6, dpi = 300)
+```
+
+## Fit final model with stable settings
+After finding the optimal mtry and min.node.size value, I fit the final random forest model using the ranger package with the best mtry and a high number of trees to ensure stability.
+```{r}
+rf_plant_final <- ranger::ranger(
+  richness_plant ~ .,
+  data = plant_train, # Use only training data for final model
+  num.trees = 500,   # Number of trees for stable prediction
+  mtry = floor(ncol(plant_train) / 3), # best mtry from tuning
+  min.node.size = 5, # best min.node.size from tuning
+  splitrule = "variance",
+  importance = "permutation", # Set importance to permutation for final model
+  num.threads = max(1, parallel::detectCores() - 1),
+  seed = 123 # Set seed for reproducibility
+)
+
+rf_plant_final
+# R squared OOB: 0.32
+# MSE OOB: 153.91
+
+# Save the final model
+saveRDS(rf_plant_final, file = file.path(DIR_MDL1_OUT, "rf_plant_final.rds"))
+```
+
+### Evaluate on test data
+The final step is to evaluate the performance of the fitted model on the test data, which was not used during training or tuning. This provides an unbiased estimate of how well the model generalizes to new, unseen data.
+```{r}
+# Predict on test data
+rf_plant_test_pred <- predict(rf_plant_final, data = plant_test)
+
+# Calculate performance metrics
+mse_plant_test <- mean((rf_plant_test_pred$predictions - plant_test$richness_plant)^2)
+r2_plant_test <- 1 - sum((rf_plant_test_pred$predictions - plant_test$richness_plant)^2) / sum((plant_test$richness_plant - mean(plant_test$richness_plant))^2)
+
+r2_plant_test
+# R squared: 0.37
+mse_plant_test 
+# MSE: 154.43
+```
+
+### Calculate variable importance
+Finally, I calculate the variable importance using the permutation method (Altmann's method) to identify which predictors are most influential in predicting plant richness.
+```{r}
+# Calculate variable importance using permutation method (Altmann's method)
+importance_pvalues_plant_obj <- ranger::importance_pvalues(
+  rf_plant_final,
+  method = "altmann",
+  num.permutations = 100,
+  formula = richness_plant ~ .,
+  data = plant_train, # Use training data for importance calculation to avoid data leakage
+  num.threads = parallel::detectCores() - 1,
+  seed = 123 # Set seed for reproducibility
+)
+
+# Convert importance results to a data frame for easier handling
+importance_pvalues_plant_df <- data.frame(
+  Variable = rownames(importance_pvalues_plant_obj),
+  importance_pvalues_plant_obj
+) |>
+  dplyr::arrange(pvalue)
+
+# Save the final model and importance results
+write.csv(importance_pvalues_plant_df, file = file.path(DIR_MDL1_OUT, "rf_plant_imp_pval.csv"), row.names = FALSE)
+```
+
+#### Plot variable importance of the 20 most important variables
+```{r}
+# Plot variable importance of the 20 most important variables
+top_20_importance <- importance_pvalues_plant_df |>
+  slice_head(n = 20)
+
+# Create a bar plot of the top 20 variable importance
+ggplot(top_20_importance, aes(x = reorder(Variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0("p=", round(pvalue, 3))), hjust = -0.1, size = 3) +
+  coord_flip() +
+  expand_limits(y = max(top_20_importance$importance) * 1.2) +
+  labs(
+    title = "Top 20 Variable Importance",
+    x = "Variable",
+    y = "Importance"
+  ) +
+  theme_minimal()
+
+# Save the variable importance plot
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_plant_imp_top20.png"), width = 8, height = 6, dpi = 300)
+```
+
+#### Partial dependence plots for top 20 variables
+```{r}
+library(pdp)
+
+# pred.fun must return a single mean value per grid point, not a vector
+ranger_pred <- function(object, newdata) mean(predict(object, data = newdata)$predictions)
+
+# Compute marginal PDP for each of the top 20 variables and combine into one data frame
+top_20_vars <- importance_pvalues_plant_df |>
+  slice_head(n = 20) |>
+  pull(Variable)
+
+pdp_top20_df <- dplyr::bind_rows(lapply(top_20_vars, function(var) {
+  pd <- pdp::partial(
+    rf_plant_final,
+    pred.var        = var,
+    train           = plant_train,
+    pred.fun        = ranger_pred,
+    grid.resolution = 40   # evaluate at 20 evenly-spaced points — avoids jagged lines from many unique values
+  )
+  x_val <- pd[[var]]
+  data.frame(
+    variable    = var,
+    x_value     = as.character(x_val),   # keep as character; convert to numeric later per type
+    x_is_factor = is.factor(x_val) || is.character(plant_train[[var]]) || is.factor(plant_train[[var]]),
+    yhat        = pd$yhat
+  )
+}))
+
+# Order panels by importance rank
+pdp_top20_df$variable <- factor(pdp_top20_df$variable, levels = top_20_vars)
+
+# Split into numeric and categorical subsets for appropriate geoms
+pdp_numeric <- pdp_top20_df |>
+  dplyr::filter(!x_is_factor) |>
+  dplyr::mutate(x_value = as.numeric(x_value))
+
+pdp_factor <- pdp_top20_df |>
+  dplyr::filter(x_is_factor)
+
+# Numeric variables: line plot
+p_num <- ggplot(pdp_numeric, aes(x = x_value, y = yhat)) +
+  geom_line(color = "steelblue", linewidth = 0.8) +
+  facet_wrap(~ variable, scales = "free", ncol = 4) +
+  labs(title = "Partial Dependence — Numeric Variables", x = "Variable Value", y = "Predicted Plant Richness") +
+  theme_minimal(base_size = 9)
+
+# Categorical variables: bar plot
+p_cat <- ggplot(pdp_factor, aes(x = x_value, y = yhat)) +
+  geom_col(fill = "steelblue") +
+  facet_wrap(~ variable, scales = "free", ncol = 4) +
+  labs(title = "Partial Dependence — Categorical Variables", x = "Category", y = "Predicted Plant Richness") +
+  theme_minimal(base_size = 9) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p_num
+p_cat
+
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_plant_pdp_top20_numeric.png"), plot = p_num, width = 14, height = 12, dpi = 300)
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_plant_pdp_top20_categorical.png"), plot = p_cat, width = 14, height = 8, dpi = 300)
+```
+
+#### Interaction partial dependence: AS_4 x LU_10
+```{r}
+# 2D interaction PDP — heatmap of predicted richness across the AS_4 x LU_10 value space
+pdp_as4_lu10 <- pdp::partial(
+  rf_plant_final,
+  pred.var = c("AS_4", "LU_10"),
+  train    = plant_train,
+  pred.fun = ranger_pred
+)
+
+ggplot(pdp_as4_lu10, aes(x = AS_4, y = LU_10, fill = yhat)) +
+  geom_tile() +
+  scale_fill_viridis_c(name = "Predicted\nRichness") +
+  labs(
+    title = "Interaction Partial Dependence: AS_4 x LU_10",
+    x = "AS_4",
+    y = "LU_10"
+  ) +
+  theme_minimal()
+
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "rf_plant_pdp_AS_4_LU_10.png"), width = 8, height = 6, dpi = 300)
+```
+
+## Fit model using cv
+I now fit the model using caret's train function with the same repeated cross-validation setup to get performance estimates across all folds and repeats, which provides a more robust assessment of model performance than just looking at OOB metrics from the final model.
+```{r}
+set.seed(123)
+rf_plant_cv <- caret::train(
+  richness_plant ~ .,
+  data        = plant_data,
+  method      = "ranger",
+  importance  = "none",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = floor(ncol(plant_data) / 3),
+    splitrule     = "variance",
+    min.node.size = 5
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+rf_plant_cv
+rf_plant_cv$results
+rf_plant_cv$resample
+
+# Manual summary across all folds/repeats
+resamp <- rf_plant_cv$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+
+# Save the CV model and results
+saveRDS(rf_plant_cv, file = file.path(DIR_MDL1_OUT, "rf_plant_full_cv.rds"))
+write.csv(rf_plant_cv$results, file = file.path(DIR_MDL1_OUT, "rf_plant_full_cv_results.csv"), row.names = FALSE)
+```
+
+## Fit single model on full dataset with best hyperparameters
+Finally, I fit a single random forest model on the entire dataset using the best mtry and min.node.size values found during tuning. This model can be used for final variable importance assessment and partial dependence analysis, as it is trained on all available data.
+```{r}
+rf_plant_final_full <- ranger::ranger(
+  richness_plant ~ .,
+  data          = plant_data,      # full dataset
+  num.trees     = 500,
+  mtry          = rf_plant_cv$bestTune$mtry,
+  min.node.size = rf_plant_cv$bestTune$min.node.size,
+  splitrule     = "variance",
+  importance    = "permutation",
+  seed          = 123
+)
+
+# Save the final full model
+saveRDS(rf_plant_final_full, file = file.path(DIR_MDL1_OUT, "rf_plant_final_full.rds"))
+
+importance_pvalues_plant_obj <- ranger::importance_pvalues(
+  rf_plant_final_full,
+  method           = "altmann",
+  num.permutations = 100,
+  formula          = richness_plant ~ .,
+  data             = plant_data,   # consistent: model was trained on full data
+  num.threads      = parallel::detectCores() - 1,
+  seed             = 123
+)
+
+# Save the importance results for the full model
+importance_pvalues_plant_df <- data.frame(
+  Variable = rownames(importance_pvalues_plant_obj),
+  importance_pvalues_plant_obj
+) |>
+  dplyr::arrange(pvalue)
+
+importance_pvalues_plant_df
+
+write.csv(importance_pvalues_plant_df, file = file.path(DIR_MDL1_OUT, "rf_plant_full_imp_pval.csv"), row.names = FALSE)
+```

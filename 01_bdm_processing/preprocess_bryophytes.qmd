@@ -1,0 +1,92 @@
+# Load Libraries
+```{r}
+library(readxl)
+library(tidyverse)
+source("_config.r")
+```
+
+# Load data
+```{r}
+# Load both excel sheets for bryophytes data
+header <- read_excel(file.path(DATA_ROOT, "bdm/raw/2050_Z9_Kopfdaten_V3.xlsx"), sheet = 1)
+header # Size 7'289 X 16
+moss <- read_excel(file.path(DATA_ROOT, "bdm/raw/2050_Z9_Moose_V3.xlsx"), sheet = 1)
+moss # Size 65'155 x 6
+```
+
+# Preprocess data
+## Merge "Art" column
+```{r}
+# Merge datasets based on "aID_KD" keeping all surveys from "header" and throw out false surveys
+data <- left_join(header, moss, by = "aID_KD")
+data <- as_tibble(data) |>
+  filter(!is.na(yearMoos)) # Throw out false surveys with NA values in "yearMoos" column
+
+# Change the column name "Art" to "Artepitheton"
+colnames(data)[which(names(data) == "Art")] <- "Artepitheton"
+
+# Add the strings from column "Gattung" and "Artepitheton" together into column "Art"
+data <- data |>
+  mutate(Art = if_else(is.na(Gattung) & is.na(Artepitheton), NA_character_, paste(Gattung, Artepitheton)))
+```
+
+## Key data overview
+```{r}
+# Get data type of "data" dataframe
+str(data)
+
+# Get dataframe dimensions
+dim(data) # Size 66'108 X 22 
+
+# Check all columns for NaN values and print the amount of NaN values per column
+sapply(data, function(x) sum(is.na(x)))
+
+# Count and print the amount of unique plots in "aID_STAO"
+print(paste("Number of unique plots (aID_STAO):", n_distinct(data$aID_STAO))) # 1442 Plots
+
+# Count and print the amount of unique species in "Art"
+print(paste("Number of unique species (Art):", n_distinct(data$Art))) # 575 Species + 1 NA value
+
+# Print a summary of the dataframe
+summary(data)
+data
+```
+
+## Save unique species list
+```{r}
+# Create a list of unique species in "Art" column, but ignore the one NA value
+species_list <- unique(data$Art[!is.na(data$Art)])
+
+# Sort them according to alphabetical order
+species_list <- species_list[order(species_list)]
+
+# Save the species list as a csv file
+write.csv(species_list, file = file.path(DATA_ROOT, "bdm/processed/moss_species_list.csv"), row.names = FALSE)
+```
+
+## Data cropping
+```{r}
+# Select only columns needed for analysis
+data_cropped <- data |>
+  select(aID_STAO, yearMoos, Art)
+```
+
+## Calculate yearly richness per plot (alpha diversity)
+```{r}
+# Count species occurrences per plot and year by grouping "aID_STAO" and "yearMoos" and fill NA with 0
+alpha_richness <- data_cropped |>
+  group_by(aID_STAO, yearMoos) |> # Group according to year and ID
+  summarize(richness_moss = n_distinct(Art, na.rm = TRUE), .groups = "drop") # Summarize all unique species, NA becomes 0
+alpha_richness
+
+# Print the plots and survey year with no species found
+alpha_richness_zero <- alpha_richness |>
+  filter(richness_moss == 0)
+alpha_richness_zero # 955 surveys with richness = 0
+```
+
+## Saving resulting dataframe as rds file
+```{r}
+# Save the alpha_richness dataframe as a rds file
+saveRDS(alpha_richness, file = PATH_MOSS_RICHNESS)
+```

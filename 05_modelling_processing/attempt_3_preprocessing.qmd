@@ -1,0 +1,463 @@
+# Attempt 3, Data Preprocessing
+
+Prepares all datasets for Attempt 3 modelling from species richness surveys,
+plot coordinates, and environmental layers. Produces three datasets, two of which 
+are used by `06_modelling/`.
+
+| # | Output | Grain | Period | Path constant | Modelling Use |
+|---|--------|-------|--------|---------------|----------------|
+| 1 | Cross-Sectional | 1 row / plot | 2021–2025 | `PATH_MDL3_MOSS/PLANT_DATA` | Static richness (RF) |
+| 2 | Panel | 1 row / plot × year | 2001–2020 | `PATH_MDL3_MOSS/PLANT_PANEL` | Not-used (possible mixed effects modelling) |
+| 3 | Slope dataset | 1 row / plot | 2001–2020 | `PATH_MDL3_SLOPES_MOSS/PLANT` | Richness-change (RF) |
+
+# Setup
+```{r}
+library(tidyverse)
+library(sf)
+library(terra)
+library(DataExplorer)
+library(ggcorrplot)
+library(polycor)
+```
+
+# Input Data
+## Richness data
+```{r}
+source("_config.r")
+
+# Load alpha richness for mosses and plants
+moss_richness <- readRDS(PATH_MOSS_RICHNESS)
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)
+
+head(moss_richness)
+head(plant_richness)
+
+dim(moss_richness) # 7'105 x 3
+dim(plant_richness) # 7'137 x 3
+```
+
+## Richness slopes (per-plot trend statistics)
+Pre-computed richness slopes over the 2001–2020 window.
+Computed in `01_bdm_processing/calculate_richness_slopes.r`.
+```{r}
+# Load pre-computed richness slopes (2001–2020 window)
+moss_richness_slopes  <- readRDS(PATH_MOSS_SLOPES_RDS)
+plant_richness_slopes <- readRDS(PATH_PLANT_SLOPES_RDS)
+
+head(moss_richness_slopes)
+head(plant_richness_slopes)
+
+dim(moss_richness_slopes)  # 1433 x 3
+dim(plant_richness_slopes) # 1437 x 3
+```
+
+## Plot coordinates
+```{r}
+# Load plot coordinates
+plot_coordinates <- readRDS(PATH_PLOT_COORDS_RDS)
+
+head(plot_coordinates)
+
+dim(plot_coordinates) # 1445 x 3
+```
+
+## Environmental variables
+### Load
+```{r}
+# Load extracted environmental variables
+env_arealstatistik <- readRDS(PATH_ENV_LANDUSE)
+env_dhm25 <- readRDS(PATH_ENV_TOPO)
+env_habitatmap <- readRDS(PATH_ENV_HABITAT)
+env_hab_landscape <- readRDS(PATH_ENV_HAB_WIDE_2M)
+env_bioclim_panel <- readRDS(PATH_BIOCLIM_PANEL)
+env_soil_kobo_interp <- readRDS(PATH_ENV_SOIL_KOBO_INTERP)
+env_veg_height <- readRDS(PATH_VEG_HEIGHT)
+env_mowing_int <- readRDS(PATH_MOWING_INTENSITY)
+env_meteoswiss <- readRDS(PATH_ENV_CLIMATE)
+
+head(env_arealstatistik)
+head(env_dhm25)
+head(env_habitatmap)
+head(env_hab_landscape)
+head(env_bioclim_panel)
+head(env_soil_kobo_interp)
+head(env_veg_height)
+head(env_mowing_int)
+head(env_meteoswiss)
+
+# Print the amount of rows per environmental dataset to check if they match the plot coordinates
+cat("Number of rows in plot_coordinates:", nrow(plot_coordinates), "\n")
+cat("Number of rows in env_arealstatistik:", nrow(env_arealstatistik), "\n")
+cat("Number of rows in env_dhm25:", nrow(env_dhm25), "\n")
+cat("Number of rows in env_habitatmap:", nrow(env_habitatmap), "\n")
+cat("Number of rows in env_hab_landscape:", nrow(env_hab_landscape), "\n")
+cat("Number of rows in env_bioclim_panel:", nrow(env_bioclim_panel), "\n")
+cat("Number of rows in env_soil_kobo_interp:", nrow(env_soil_kobo_interp), "\n")
+cat("Number of rows in env_veg_height:", nrow(env_veg_height), "\n")
+cat("Number of rows in env_mowing_int:", nrow(env_mowing_int), "\n")
+cat("Number of rows in env_meteoswiss:", nrow(env_meteoswiss), "\n")
+```
+
+### Join
+```{r}
+# Combine all static environmental baseline data and coordinates
+env_data <- plot_coordinates |>
+  left_join(env_arealstatistik, by = "aID_STAO") |>
+  left_join(env_dhm25, by = "aID_STAO") |>
+  left_join(env_habitatmap, by = "aID_STAO") |>
+  left_join(env_hab_landscape, by = "aID_STAO") |>
+  left_join(env_bioclim_panel |> filter(end_year == 2021), by = "aID_STAO") |>
+  left_join(env_meteoswiss |> select(aID_STAO, radiation_y_15yr), by = "aID_STAO") |>
+  left_join(env_soil_kobo_interp, by = "aID_STAO") |>
+  left_join(env_veg_height, by = "aID_STAO") |>
+  left_join(env_mowing_int, by = "aID_STAO")
+```
+
+## Data processing
+### Handle NAs in mowing intensity and vegetation height
+```{r}
+# mow_int: NA means the plot is not grassland → 0 (no mowing)
+# veg_height: NA means no applicable vegetation height data → 0
+env_data <- env_data |>
+  mutate(
+    mow_int    = replace_na(mow_int,    0),
+    veg_height = replace_na(veg_height, 0)
+  )
+
+# Print the number of NAs per column to verify that there are no more NAs in mow_int and veg_height
+na_counts <- sapply(env_data, function(x) sum(is.na(x)))
+print(na_counts)
+```
+
+### Bin aspect into cardinal directions
+```{r}
+# Bin aspect variable from dhm25 data into 8 cardinal directions (N, NE, E, SE, S, SW, W, NW)
+env_data <- env_data |>
+  mutate(aspect_factor = factor(
+    case_when(
+      aspect >= 337.5 | aspect < 22.5  ~ "N",
+      aspect >= 22.5  & aspect < 67.5  ~ "NE",
+      aspect >= 67.5  & aspect < 112.5 ~ "E",
+      aspect >= 112.5 & aspect < 157.5 ~ "SE",
+      aspect >= 157.5 & aspect < 202.5 ~ "S",
+      aspect >= 202.5 & aspect < 247.5 ~ "SW",
+      aspect >= 247.5 & aspect < 292.5 ~ "W",
+      aspect >= 292.5 & aspect < 337.5 ~ "NW"
+    ), 
+    levels = c("N", "NE", "E", "SE", "S", "SW", "W", "NW")))
+
+env_data$aspect_factor
+
+# Done according to:
+# https://www.supergeotek.com/SpatialAnalyst_ENG_HTML/aspect.htm
+```
+
+### Bin mowing intensity into categories
+```{r}
+# Simply plot the number of plots versus mowing intensity to see if there is a clear pattern
+ggplot(env_data, aes(x = mow_int)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Number of Plots by Mowing Intensity",
+       x = "Mowing Intensity",
+       y = "Number of Plots") +
+  theme_minimal()
+
+# Plots with 0 mowing events are categorized as "No Mowing", 1-2 events as "Low", 3-5 as "Medium", and more than 5 as "High"
+env_data <- env_data |>
+  mutate(mow_int_cat = case_when(
+    mow_int == 0          ~ "No Mowing",
+    mow_int > 0 & mow_int <= 2 ~ "Low",
+    mow_int > 2 & mow_int <= 5 ~ "Medium",
+    mow_int > 5           ~ "High"
+  )) |>
+  mutate(mow_int_cat = factor(mow_int_cat, levels = c("No Mowing", "Low", "Medium", "High")))
+```
+
+### Factorise categorical columns
+```{r}
+# Auto-convert all character columns to factors
+env_data <- env_data |>
+  mutate(across(where(is.character), as.factor))
+
+# Grab all TypoCH columns
+typoch_columns <- grep("TypoCH", names(env_data), value = TRUE)
+
+# Convert other known categorical variables and typoch columns to factors
+env_data <- env_data |>
+  mutate(across(all_of(c("AS_4", "LU_4","LU_10", typoch_columns)), as.factor))
+
+# Print the data type per column
+column_types <- sapply(env_data, class)
+print(column_types)
+```
+
+# Variable selection and Exploratory Data Analysis
+## Variable selection
+Since the current environmental dataset still contains too many predictors i need to reduce the number of predictors further. Some columns can be thrown out easily because they contain too many factors (TypoCH_2nd) or are just not relevant (XKoord_LV95, YKoord_LV95). Some others are a bit more tricky because they are highly correlated with others (bioclim). I will first use reasoning and expert knowledge (mainly from other studies) and then use correlation matrices to identify redundant predictors.
+
+```{r}
+dim(env_data) # 1'445 x 75
+
+# Remove coordinates
+env_data <- env_data |>
+  select(-XKoord_LV95, -YKoord_LV95)
+
+# Remove TypoCH text based columns and the second level of TypoCH to only keep the numeric representation and the first level which already captures the main habitat types
+env_data <- env_data |>
+  select(-matches("TypoCH_NUM"), -matches("TypoCH_DE_1st"), -matches("TypoCH_DE_2nd"), -matches("TypoCH_2nd_code"))
+
+# Remove LU_10 and AS_4 since LU_10 has too many factors and AS_4 captures already the information about sealed surfaces
+env_data <- env_data |>
+  select(-LU_10, -AS_4)
+
+# Remove aspect as this has been turned into factor
+env_data <- env_data |>
+  select(-aspect)
+
+# Remove mowing intensity as this has been turned into a factor
+env_data <- env_data |>
+  select(-mow_int)
+
+# Remove landscape diversity metrics since they provided no insights in previous modelling attempts and to reduce complexity
+env_data <- env_data[, !grepl("shannon|edge|class_richness", colnames(env_data))]
+
+# Remove end_year column (comes from the bioclim panel data)
+env_data <- env_data |>
+  select(-end_year)
+
+# Remove elevation since it is highly correlated with other variables and acts as a strong proxy
+env_data <- env_data |>
+  select(-elevation)
+
+# Remove lower soil depths variables (30-60, 60-120) since the upper soil depths (0-30) are more relevant
+env_data <- env_data |>
+  select(-humus_30_60, -humus_60_120, -kak_30_60, -kak_60_120, -ph_30_60, -ph_60_120, -sand_30_60, -sand_60_120, -schluff_30_60, -schluff_60_120, -ton_30_60, -ton_60_120)
+
+# Remove compositional soil data since they add up to 100%
+env_data <- env_data |>
+  select(-matches("schluff_0_30|ton_0_30"))
+
+dim(env_data) # 1'445 x 34
+# I was able to reduce the dataset from 74 to 34 predictors
+```
+
+## Correlation matrices
+```{r}
+# Plot 1: Pearson correlation with only numeric predictors
+num_data   <- env_data |> dplyr::select(where(is.numeric))
+
+cor_matrix <- cor(num_data, use = "pairwise.complete.obs")
+p_num <- ggcorrplot(cor_matrix, method = "circle", type = "lower", lab = TRUE,
+                    title = "Pearson Correlation (Numeric Predictors)",
+                    ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+
+print(p_num)
+ggsave(file.path(DIR_MDL3_PLOTS, "env_numeric_cor.png"), plot = p_num, width = 14, height = 12, bg = "white")
+
+# Plot 2: Mixed correlation with all predictors (Pearson / Polyserial / Polychoric)
+# hetcor() uses Pearson for numeric-numeric, polyserial for numeric-factor, polychoric for factor-factor
+het       <- polycor::hetcor(as.data.frame(env_data), use = "pairwise.complete.obs")
+
+p_mixed <- ggcorrplot(het$correlations, method = "circle", type = "lower", lab = TRUE,
+                      title = "Mixed Correlation Matrix (Pearson / Polyserial / Polychoric)",
+                      ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+
+print(p_mixed)
+ggsave(file.path(DIR_MDL3_PLOTS, "env_mixed_cor.png"), plot = p_mixed, width = 14, height = 12, bg = "white")
+```
+
+## Further variable selection based on correlation and expert knowledge
+```{r}
+dim(env_data) # 1'445 x 34
+
+# We only keep the following bioclimatic variables based on expert knowledge and previous modelling attempts: 
+# BIO3, BIO4, BIO10, BIO11, BIO18, BIO19
+keep_bio <- c("bio3", "bio4", "bio10", "bio11", "bio18", "bio19")
+bio_cols <- grep("^bio\\d+$", names(env_data), value = TRUE)
+bio_to_drop <- setdiff(bio_cols, keep_bio)
+
+env_data <- env_data |>
+  select(-all_of(bio_to_drop))
+
+dim(env_data) # 1'445 x 21
+# I was further able to reduce the dataset and i am now on 21 predictors.
+```
+
+### Reduced Correlation matrix
+```{r}
+# Plot 1: Pearson correlation with only numeric predictors
+num_data   <- env_data |> dplyr::select(where(is.numeric))
+
+cor_matrix_reduced <- cor(num_data, use = "pairwise.complete.obs")
+p_num_reduced <- ggcorrplot(cor_matrix_reduced, method = "circle", type = "lower", lab = TRUE,
+                    title = "Pearson Correlation (Numeric Predictors)",
+                    ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+
+print(p_num_reduced)
+ggsave(file.path(DIR_MDL3_PLOTS, "env_numeric_cor_reduced.png"), plot = p_num_reduced, width = 14, height = 12, bg = "white")
+
+# Plot 2: Mixed correlation with all predictors (Pearson / Polyserial / Polychoric)
+# hetcor() uses Pearson for numeric-numeric, polyserial for numeric-factor, polychoric for factor-factor
+het_reduced       <- polycor::hetcor(as.data.frame(env_data), use = "pairwise.complete.obs")
+
+p_mixed_reduced <- ggcorrplot(het_reduced$correlations, method = "circle", type = "lower", lab = TRUE,
+                      title = "Mixed Correlation Matrix (Pearson / Polyserial / Polychoric)",
+                      ggtheme = ggplot2::theme_minimal(), tl.srt = 90)
+
+print(p_mixed_reduced)
+ggsave(file.path(DIR_MDL3_PLOTS, "env_mixed_cor_reduced.png"), plot = p_mixed_reduced, width = 14, height = 12, bg = "white")
+```
+
+## DataExplorer report
+```{r}
+# Copy the env. dataset
+env_data_eda <- env_data
+
+# Clean all categorical strings to strictly use ASCII characters
+# First transliterate common Swiss accents/umlauts, then replace any remaining special characters with _
+# This prevents invalid multibyte string errors in make.names() during DataExplorer report generation
+umlaut_map <- c("ä" = "ae", "ö" = "oe", "ü" = "ue",
+                "Ä" = "Ae", "Ö" = "Oe", "Ü" = "Ue",
+                "é" = "e",  "è" = "e",  "ê" = "e",
+                "à" = "a",  "â" = "a",  "ç" = "c")
+clean_str <- function(x) stringr::str_replace_all(stringr::str_replace_all(x, umlaut_map), "[^a-zA-Z0-9_]", "_")
+
+env_data_eda <- env_data_eda |>
+  mutate(across(where(is.character), clean_str)) |>
+  mutate(across(where(is.factor), ~ {
+    factor(.x, levels = levels(.x), labels = clean_str(levels(.x)))
+    }))
+
+# Generate DataExplorer report
+DataExplorer::create_report(env_data_eda, output_file = file.path(DIR_MDL3_REPORTS, "model_3_data_report.html"))
+```
+
+# Output 1. Static Dataset (2021–2025)
+One row per plot for the most recent survey period (2021–2025). 
+Data set consist of :
+- Richness per plot and year (pre-computed in `01_bdm_processing/preprocess_<vascular_or_bryophyte>.r`)
+- Static environment (topography, habitat, soil, land use) from this last survey period +- 2021, for more specific information about the environmental data and its sources see the report
+- Bioclim variables 30 year average up to 2021
+```{r}
+# Join the environmental base data and filter to 2021-2025 directly
+moss_model_data <- moss_richness |>
+  filter(yearMoos >= 2021 & yearMoos <= 2025) |>
+  slice_max(yearMoos, by = aID_STAO) |>  # keep latest visit per plot (in case of multiple visits in 2021-2025)
+  left_join(env_data, by = "aID_STAO")
+moss_model_data
+
+plant_model_data <- plant_richness |>
+  filter(yearPl >= 2021 & yearPl <= 2025) |>
+  slice_max(yearPl, by = aID_STAO) |>    # keep latest visit per plot (in case of multiple visits in 2021-2025)
+  left_join(env_data, by = "aID_STAO")
+plant_model_data
+
+dim(moss_model_data) # 1435 x 23
+dim(plant_model_data) # 1442 x 23
+
+View(moss_model_data)
+
+# Print the number of nan rows per column
+nan_counts <- sapply(moss_model_data, function(x) sum(is.na(x)))
+nan_counts_df <- data.frame(
+  column = names(nan_counts),
+  nan_count = nan_counts)
+print(nan_counts_df)
+
+# Save the combined static datasets for modeling
+saveRDS(moss_model_data, PATH_MDL3_MOSS_DATA)
+saveRDS(plant_model_data, PATH_MDL3_PLANT_DATA)
+```
+
+# Output 2, Panel (2001–2020)
+One row per plot × survey year, restricted to the bioclim sliding-window range (2001–2020) where BIO1–BIO19 are available. Since for the years 2021-2025 there were no climatic meteo swiss data available and thus no bioclim could be calculated. Other environmental variables are kept static and are from +-2021. This dataset is intended for possible mixed-effects models with a temporal dimension.
+Data set consist of:
+- Richness per plot and year (pre-computed in `01_bdm_processing/preprocess_<vascular_or_bryophyte>.r`)
+- Static environment (topography, habitat, soil, land use) from this last survey period +- 2021
+- Bioclim variables for the corresponding survey year (e.g. 2010 survey gets bioclim average over the last 30 years up to 2010)
+
+```{r}
+# Strip bio* from env_data so bioclim can be joined dynamically per survey year
+env_static <- env_data |>
+  select(-matches("^bio\\d+$"))
+
+moss_panel <- moss_richness |>
+  rename(survey_year = yearMoos) |>
+  filter(survey_year >= 2001 & survey_year <= 2020) |>
+  left_join(env_static, by = "aID_STAO") |>
+  left_join(env_bioclim_panel |> rename(survey_year = end_year), by = c("aID_STAO", "survey_year"))
+
+plant_panel <- plant_richness |>
+  rename(survey_year = yearPl) |>
+  filter(survey_year >= 2001 & survey_year <= 2020) |>
+  left_join(env_static, by = "aID_STAO") |>
+  left_join(env_bioclim_panel |> rename(survey_year = end_year), by = c("aID_STAO", "survey_year"))
+
+dim(moss_panel) # 5663 x 50
+dim(plant_panel) # 5643 x 50
+
+saveRDS(moss_panel,  PATH_MDL3_MOSS_PANEL)
+saveRDS(plant_panel, PATH_MDL3_PLANT_PANEL)
+```
+
+# Output 3, Slope Modelling Dataset
+One row per plot which corresponds to the slope of richness change over the 2001–2020 window, and the slope of bioclimatic change over the same window, plus static environmental predictors. In a nutshell i am trying to model wether the change in richness over time calculated by the linear regession slope is associated with the change in bioclimatic variables over the same time window, while controlling for static environmental predictors. 
+Data set consist of:
+- Linear regression slope coefficient of each Bioclim over 2001–2020 for every plot
+- Linear regression absolut change in percent of richness over 2001–2020 for every plot (pre-computed in `01_bdm_processing/calculate_richness_slopes.r`)
+- Static environment (topography, habitat, soil, land use) from this last survey period +- 2021
+
+## Compute bioclimatic slopes
+```{r}
+bio_cols <- grep("^bio", names(env_bioclim_panel), value = TRUE)
+
+# Compute bioclim slopes over the 2001–2020 window (slope in units/year)
+bioclim_slopes <- env_bioclim_panel |>
+  group_by(aID_STAO) |>
+  summarise(
+    across(all_of(bio_cols), ~ coef(lm(. ~ end_year))[2], .names = "{.col}_slope"),
+    .groups = "drop"
+  )
+
+# Extract baseline bioclims (from 2001, the first year in the window)
+bioclim_baseline <- env_bioclim_panel |>
+  filter(end_year == 2001) |>
+  select(aID_STAO, all_of(bio_cols)) |>
+  rename_with(~ paste0(., "_baseline"), all_of(bio_cols))
+```
+
+```{r}
+# Only select bio3, 4, 10, 11, 18, 19 to reduce the climatic variables
+keep_bio_slope <- c("bio3", "bio4", "bio10", "bio11", "bio18", "bio19")
+bio_cols_slope <- grep("^bio\\d+_slope$", names(bioclim_slopes), value = TRUE)
+bio_slope_to_drop <- setdiff(bio_cols_slope, paste0(keep_bio_slope, "_slope"))
+bioclim_slopes <- bioclim_slopes |>
+  select(-all_of(bio_slope_to_drop))
+
+keep_bio_baseline <- c("bio3", "bio4", "bio10", "bio11", "bio18", "bio19")
+bio_cols_baseline <- grep("^bio\\d+_baseline$", names(bioclim_baseline), value = TRUE)
+bio_baseline_to_drop <- setdiff(bio_cols_baseline, paste0(keep_bio_baseline, "_baseline"))
+bioclim_baseline <- bioclim_baseline |>
+  select(-all_of(bio_baseline_to_drop))
+
+# Join bioclim trends + richness trends + static env into one row per plot
+moss_slopes_data <- moss_richness_slopes |>
+  left_join(bioclim_slopes,              by = "aID_STAO") |>
+  left_join(bioclim_baseline,            by = "aID_STAO") |>
+  left_join(env_static,                  by = "aID_STAO")
+
+plant_slopes_data <- plant_richness_slopes |>
+  left_join(bioclim_slopes,              by = "aID_STAO") |>
+  left_join(bioclim_baseline,            by = "aID_STAO") |>
+  left_join(env_static,                  by = "aID_STAO")
+
+dim(moss_slopes_data) # 1433 x 30
+dim(plant_slopes_data) # 1437 x 30
+
+# Check for nans
+sum(is.na(moss_slopes_data)) # 0
+sum(is.na(plant_slopes_data)) # 0
+
+saveRDS(moss_slopes_data,  PATH_MDL3_SLOPES_MOSS)
+saveRDS(plant_slopes_data, PATH_MDL3_SLOPES_PLANT)
+```

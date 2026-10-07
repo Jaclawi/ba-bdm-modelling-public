@@ -1,0 +1,161 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load plant model data
+plant_data <- readRDS(PATH_MDL1_PLANT_DATA)
+plant_richness <- readRDS(PATH_PLANT_RICHNESS)
+```
+
+# Data preparation
+## Remove target column and plot ID
+```{r}
+# Remove year and ID columns after join
+plant_data <- plant_data |>
+  dplyr::select(-yearPl, -aID_STAO)
+
+# Keep only climate variables for the 15 year aggregate
+plant_data <- plant_data |>
+  dplyr::select(-dplyr::matches("_(5|10|20|30)yr$"))
+
+View(plant_data)
+dim(plant_data) # 1449 x 120
+```
+
+# Species change modelling
+## Fit per-plot linear regression and extract slopes
+```{r}
+# Require at least 3 observations per plot for a meaningful regression
+lm_plant <- plant_richness |>
+  group_by(aID_STAO) |>
+  filter(n() >= 3) |>
+  ungroup()
+
+# Fit per-plot OLS regression and extract total percent change over observation period
+plant_plot_slopes <- lm_plant |>
+  group_by(aID_STAO) |>
+  summarise(
+    slope_year       = coef(lm(richness_plant ~ yearPl))[["yearPl"]],
+    intercept        = coef(lm(richness_plant ~ yearPl))[["(Intercept)"]],
+    n_obs            = n(),
+    year_min         = min(yearPl, na.rm = TRUE),
+    year_max         = max(yearPl, na.rm = TRUE),
+    mean_richness    = mean(richness_plant, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    fitted_start     = intercept + slope_year * year_min,
+    fitted_end       = intercept + slope_year * year_max,
+    total_change_pct = ifelse(mean_richness == 0, 0, ((fitted_end - fitted_start) / mean_richness) * 100)
+  ) |>
+  dplyr::arrange(total_change_pct)
+
+# Print the number of NaN in total_change_pct
+sum(is.na(plant_plot_slopes$total_change_pct))
+
+# Save slopes for downstream modelling
+write.csv(plant_plot_slopes, file = file.path(DIR_MDL1_OUT, "lm_plant_plot_slopes.csv"), row.names = FALSE)
+```
+
+### Plot per-plot regressions
+```{r}
+# Plot 5 specific plots selected plots with their fitted regression lines
+set.seed(142)
+IDs = c(503130, 491118, 503134, 503118)
+
+obs_data <- lm_plant |>
+  filter(aID_STAO %in% IDs)
+
+ggplot(obs_data, aes(x = yearPl, y = richness_plant, color = factor(aID_STAO))) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  geom_smooth(
+    data = lm_plant, aes(x = yearPl, y = richness_plant),
+    method = "lm", se = FALSE, color = "darkred", linetype = "dashed", linewidth = 1,
+    inherit.aes = FALSE
+  ) +
+  coord_cartesian(xlim = c(2001, 2025)) +
+  labs(
+    title = "Plant Richness Over Time for Selected Plots",
+    subtitle = "Solid lines = per-plot OLS fits, dashed = global OLS fit",
+    x = "Year",
+    y = "Plant Richness",
+    color = "Plot"
+  ) +
+  theme_minimal()
+
+# Save the plot of per-plot regressions
+ggsave(filename = file.path(DIR_MDL1_PLOTS, "lm_plant_selected_plot_slopes.png"), width = 8, height = 6, dpi = 300)
+```
+
+## Join the slopes with the environmental data for modelling
+```{r}
+# Join the slopes with the environmental data for modelling
+plant_data <- readRDS(PATH_MDL1_PLANT_DATA)
+
+# Keep only climate variables for the 15 year aggregate
+plant_data <- plant_data |>
+  dplyr::select(-dplyr::matches("_(5|10|20|30)yr$"))
+
+# Join the slopes with the environmental data for modelling
+plant_data_change <- plant_plot_slopes |>
+  left_join(plant_data, by = "aID_STAO") |>
+  dplyr::select(-aID_STAO, -richness_plant, -yearPl, -fitted_start, -fitted_end, -mean_richness, -year_min, -year_max, -n_obs, -intercept, -slope_year) # Remove ID, intercept and n_obs after join
+
+dim(plant_data_change) # 1449 x 120
+```
+
+## Train test split
+```{r}
+set.seed(123)
+train_idx <- caret::createDataPartition(plant_data_change$total_change_pct, p = 0.8, list = FALSE)
+plant_change_train <- plant_data_change[train_idx, ]
+plant_change_test  <- plant_data_change[-train_idx, ]
+
+dim(plant_change_train) # 1161 x 120
+dim(plant_change_test)  # 288 x 120
+```
+
+## Fit random forest model to predict slopes (change rates)
+```{r}
+# Fit random forest model to predict slope of change in plant richness over time using environmental predictors
+rf_plant_change <- ranger::ranger(
+  total_change_pct ~ .,
+  data = plant_change_train,
+  num.trees = 500,
+  mtry = floor(ncol(plant_change_train) / 3),
+  min.node.size = 5,
+  splitrule = "variance",
+  importance = "permutation",
+  num.threads = max(1, parallel::detectCores() - 1),
+  seed = 123 # Set seed for reproducibility
+)
+
+# Save the model
+saveRDS(rf_plant_change, file = file.path(DIR_MDL1_OUT, "rf_plant_change.rds"))
+```
+
+### Evaluate on test data
+```{r}
+# Predict on test data
+rf_plant_change_test_pred <- predict(rf_plant_change, data = plant_change_test)
+
+# Calculate performance metrics
+r2_plant_change <- 1 - sum((rf_plant_change_test_pred$predictions - plant_change_test$total_change_pct)^2) / sum((plant_change_test$total_change_pct - mean(plant_change_test$total_change_pct))^2)
+mse_plant_change <- mean((rf_plant_change_test_pred$predictions - plant_change_test$total_change_pct)^2)
+
+r2_plant_change
+# 0.059
+mse_plant_change
+# 2688.587
+```

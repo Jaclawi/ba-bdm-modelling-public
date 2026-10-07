@@ -1,0 +1,304 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(readxl)
+library(caret)
+library(performance)
+library(pdp)
+library(ggplot2)
+library(patchwork)
+library(vegan)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load moss model data
+moss_data <- readRDS(PATH_MDL3_MOSS_DATA)
+moss_richness <- readRDS(PATH_MOSS_RICHNESS)
+```
+
+# Data preparation
+## Remove target column and plot ID
+```{r}
+# Remove year and ID columns
+moss_data <- moss_data |>
+  dplyr::select(-yearMoos, -aID_STAO)
+
+dim(moss_data) # 1435 x 21
+
+# Print variable names for reference
+colnames(moss_data)
+```
+
+# Species richness modelling Random forest
+## Stable CV modelling to tune parameter
+Here i do CV tuning using the entire dataset since the samples are limited and the initial selection strongly affects the result. Thus the standard Train-Test Split procedure is not implemented.
+```{r}
+# Set repeated CV for robust tuning
+train_control <- caret::trainControl(
+  method = "repeatedcv",
+  number = 5,          # 5-fold CV
+  repeats = 10,        # repeated 10 times
+  savePredictions = "all",
+  returnResamp = "all"
+)
+
+# Tune mtry only, fix trees high for stable importance
+moss_grid <- base::expand.grid(
+  mtry = c(floor(ncol(moss_data) / 3), floor(ncol(moss_data) * 0.75), ncol(moss_data) - 1), # Explore a range of mtry values
+  splitrule = "variance",
+  min.node.size = c(3, 5, 7, 10) # Explore different node sizes for better performance
+)
+
+set.seed(123)
+rf_moss_cv_tune <- caret::train(
+  richness_moss ~ .,
+  set.seed(123),
+  data        = moss_data, # Use full data for CV modeling
+  method      = "ranger",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = moss_grid,
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+rf_moss_cv_tune
+
+# Save the CV model and results
+saveRDS(rf_moss_cv_tune, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_full_cv_tune.rds"))
+write.csv(rf_moss_cv_tune$results, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_full_cv_tune_results.csv"), row.names = FALSE)
+```
+
+## CV model using best hyperparameters
+The best hyperparameters are essentially the default ones, thus the CV model is run again with the standard parameters to get a more stable estimate of performance across all folds and repeats.
+```{r}
+# Set best hyperparameters
+best_mtry <- floor(sqrt(ncol(moss_data)))
+best_min_node_size <- 3
+
+# Fit CV model with best hyperparameters to get performance metrics across all folds/repeats
+set.seed(123)
+rf_moss_cv_std <- caret::train(
+  richness_moss ~ .,
+  data        = moss_data,
+  method      = "ranger",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = best_mtry,
+    splitrule     = "variance",
+    min.node.size = best_min_node_size
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+rf_moss_cv_std
+
+# Manual summary across all folds/repeats with standard parameters
+resamp_std <- rf_moss_cv_std$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp_std[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp_std[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+#           metric      mean         sd
+# RMSE         RMSE 6.4478985 0.35236466
+# Rsquared Rsquared 0.4705521 0.03723306
+# MAE           MAE 4.7641125 0.20857580
+
+# Save the CV model and results
+saveRDS(rf_moss_cv_std, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_std_cv.rds"))
+write.csv(rf_moss_cv_std$results, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_std_cv_results.csv"), row.names = FALSE)
+```
+
+## Assess performance across n-trees using best hyperparameters
+```{r}
+# Assess performance across n-trees using best hyperparameters
+n_trees_values <- c(5, 20, 50, 100, 200, 400, 600, 800)
+
+# Loop over n-trees values and collect CV metrics
+cv_tree_metrics <- lapply(n_trees_values, function(n_trees) {
+  rf_tmp <- caret::train(
+    richness_moss ~ .,
+    data      = moss_data,
+    method    = "ranger",
+    importance = "none",
+    num.trees = n_trees,
+    trControl = train_control,
+    tuneGrid  = expand.grid(
+      mtry          = best_mtry,
+      splitrule     = "variance",
+      min.node.size = best_min_node_size
+    ),
+    na.action   = na.omit,
+    num.threads = max(1, parallel::detectCores() - 1),
+    seed        = 123
+  )
+
+  resamp <- rf_tmp$resample
+  data.frame(
+    n_trees      = n_trees,
+    RMSE_mean    = mean(resamp$RMSE,      na.rm = TRUE),
+    RMSE_sd      = sd(resamp$RMSE,        na.rm = TRUE),
+    Rsquared_mean = mean(resamp$Rsquared, na.rm = TRUE),
+    Rsquared_sd  = sd(resamp$Rsquared,    na.rm = TRUE),
+    MAE_mean     = mean(resamp$MAE,       na.rm = TRUE),
+    MAE_sd       = sd(resamp$MAE,         na.rm = TRUE)
+  )
+})
+
+# Combine CV metrics into a single data frame
+cv_tree_metrics_df <- dplyr::bind_rows(cv_tree_metrics)
+print(cv_tree_metrics_df)
+
+# Save CV tree metrics for analysis
+write.csv(cv_tree_metrics_df, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_tune_cv_tree_metrics.csv"), row.names = FALSE)
+
+# Plot the performance metrics across n-trees
+cv_tree_metrics_long <- cv_tree_metrics_df |>
+  tidyr::pivot_longer(cols = -n_trees, names_to = c("metric", "stat"), names_sep = "_") |>
+  tidyr::pivot_wider(names_from = stat, values_from = value)
+
+ggplot(cv_tree_metrics_long, aes(x = n_trees, y = mean)) +
+  geom_line() +
+  facet_wrap(~metric, scales = "free_y") +
+  theme_bw(base_size = 9) +
+  labs(x = "Number of Trees", y = "Performance Metric")
+
+ggsave(
+  filename = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_cv_tree_metrics.png"),
+  plot     = last_plot(),
+  width    = 6,
+  height   = 4,
+  dpi      = 300,
+  bg       = "white"
+)
+```
+
+# Fit final model using all data
+```{r}
+# Fit final model using all data with best hyperparameters
+rf_moss_final <- ranger::ranger(
+  formula     = richness_moss ~ .,
+  data        = moss_data,
+  num.trees   = 500,
+  mtry        = best_mtry,
+  min.node.size = best_min_node_size,
+  importance   = "permutation",
+  num.threads = max(1, parallel::detectCores() - 1),
+  write.forest = TRUE,
+  keep.inbag  = TRUE,
+  oob.error   = TRUE,
+  verbose     = TRUE,
+  seed        = 123
+)
+
+rf_moss_final
+# OOB prediction error (MSE):       41.20176 
+# R squared (OOB):                  0.4702841 
+
+# Save final model
+saveRDS(rf_moss_final, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_final_model.rds"))
+```
+
+## Variable importance
+```{r}
+# Extract variable importance p-values via Altmann permutation test
+set.seed(123)
+imp_pvals <- ranger::importance_pvalues(
+  rf_moss_final,
+  method            = "altmann",
+  formula           = richness_moss ~ .,
+  data              = moss_data,
+  num.permutations  = 100,
+  num.threads      = max(1, parallel::detectCores() - 1),
+  verbose           = TRUE
+)
+
+var_importance <- as.data.frame(imp_pvals) |>
+  tibble::rownames_to_column("variable") |>
+  dplyr::arrange(pvalue)
+
+var_importance
+
+# Save variable importance
+write.csv(var_importance, file = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_variable_importance.csv"), row.names = FALSE)
+```
+
+## Morans I
+```{r}
+library(spdep)
+
+# Load final model and training data (with aID_STAO still present for coordinate join)
+rf_moss_final <- readRDS(file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_final_model.rds"))
+moss_data_full <- readRDS(PATH_MDL3_MOSS_DATA) |>
+  dplyr::select(-yearMoos)  # keep aID_STAO for joining coordinates
+
+# Load plot coordinates
+plot_coords <- readRDS(PATH_PLOT_COORDS_RDS) |>
+  dplyr::select(aID_STAO, XKoord_LV95, YKoord_LV95)
+
+# OOB predictions are aligned to moss_data_full row order
+# (ranger stores OOB predictions for every training observation)
+moss_data_full$oob_pred <- rf_moss_final$predictions
+moss_data_full$residual <- moss_data_full$richness_moss - moss_data_full$oob_pred
+
+# Join coordinates
+resid_coords <- moss_data_full |>
+  dplyr::left_join(plot_coords, by = "aID_STAO")
+
+cat(sprintf("Observations used for Moran's I: %d\n", nrow(resid_coords)))
+
+# Build spatial weights: inverse-distance weighted neighbours within 50 km
+# (50 km captures the nearest BDM plots across the Swiss grid)
+coords_mat <- as.matrix(resid_coords[, c("XKoord_LV95", "YKoord_LV95")])
+nb  <- spdep::dnearneigh(coords_mat, d1 = 0, d2 = 6000)  # 50 km threshold
+wts <- spdep::nb2listw(nb, style = "W", zero.policy = TRUE)
+
+# Moran's I test on OOB residuals
+moran_result <- spdep::moran.test(
+  resid_coords$residual,
+  listw       = wts,
+  zero.policy = TRUE,
+  alternative = "two.sided"
+)
+moran_result
+# Moran I statistic close to 0 and p > 0.05 → no meaningful spatial autocorrelation
+# Moran I statistic significantly > 0      → positive spatial autocorrelation (nearby plots share unexplained variance)
+
+# Save result summary
+moran_summary <- data.frame(
+  statistic = moran_result$statistic,
+  expected  = moran_result$estimate["Expected"],
+  variance  = moran_result$estimate["Variance"],
+  p_value   = moran_result$p.value
+)
+write.csv(moran_summary,
+          file      = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_morans_i.csv"),
+          row.names = FALSE)
+
+# Spatial plot of OOB residuals for visual inspection
+ggplot(resid_coords, aes(x = XKoord_LV95, y = YKoord_LV95, color = residual)) +
+  geom_point(size = 1.5, alpha = 0.7) +
+  scale_color_gradient2(low = "#4DBBD5", mid = "white", high = "#E64B35",
+                        midpoint = 0, name = "OOB residual") +
+  coord_fixed() +
+  theme_minimal() +
+  labs(title = "Spatial distribution of OOB residuals — moss richness RF",
+       x = "X (LV95)", y = "Y (LV95)")
+
+ggsave(
+  filename = file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_residuals_spatial.png"),
+  plot     = last_plot(),
+  width    = 10, height = 6, dpi = 300, bg = "white"
+)
+```

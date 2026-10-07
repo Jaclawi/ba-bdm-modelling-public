@@ -1,0 +1,289 @@
+# Attempt 3, partial dependence plots for continuous predictors
+## Load libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(pdp)
+library(ranger)
+library(vegan)
+library(ggsci)
+```
+
+## Global plotting settings
+```{r}
+source("./_config.r")
+DIR_PLOTS <- "08_plotting/plots"
+
+# Report column width in inches (147 mm)
+REPORT_WIDTH_IN <- 147 / 25.4
+
+# Panel height = width / 4 columns to get square panels for a single row
+PANEL_HEIGHT_IN <- REPORT_WIDTH_IN / 4
+
+# Load color PALette
+PAL <- pal_npg("nrc")(10)
+
+# Set global theme for ggplot2
+theme_set(
+    theme_classic() + # Start with a base theme
+    theme(
+    # 1. Globaly set font family and size for all text elements
+    text = element_text(
+        family = "Sans", # Global font family
+        size = 20          # Global base font size
+    ),
+
+    # 2. Fine-tuning for specific elements (overrides the global setting)
+    # Axis titles
+    axis.title = element_text(
+        size = 10, 
+        color = "black"
+    ),
+
+    # Axis text (text on the axes)
+    axis.text = element_text(size = 10, color = "black"),
+
+    # Legend titles
+    legend.title = element_text(
+        size = 10, 
+        face = "bold"
+    ),
+    # Legend text (text next to the symbols in the legend)
+    legend.text = element_text(size = 10)
+    )
+)
+
+# Save helper with width fixed to report column
+save_pdp <- function(plot, path) {
+  ggsave(
+    filename = path,
+    plot     = plot,
+    width    = REPORT_WIDTH_IN,
+    height   = PANEL_HEIGHT_IN,
+    dpi      = 300,
+    bg       = "white"
+  )
+}
+```
+
+## Global constants for plotting
+```{r}
+# Categorical variables — rendered as bar charts instead of line PDPs
+CATEGORICAL_VARS <- c("aspect_factor", "mowing_intensity_factor", "mow_int_cat",
+                      "TypoCH_1st_code", "LU_4")
+
+# Human-readable labels for every potential predictor (used in PDP and importance plots)
+VAR_LABELS <- c(
+  # Climate — cross-sectional
+  bio3                = "Isothermality (BIO3)",
+  bio4                = "Temp. Seasonality (BIO4)",
+  bio10               = "Temp. Warmest Quarter (BIO10)",
+  bio11               = "Temp. Coldest Quarter (BIO11)",
+  bio18               = "Precip. Warmest Quarter (BIO18)",
+  bio19               = "Precip. Coldest Quarter (BIO19)",
+  radiation_y_15yr    = "Solar Radiation (15-yr avg)",
+  # Climate — change baselines
+  bio3_baseline       = "Isothermality baseline (BIO3)",
+  bio4_baseline       = "Temp. Seasonality baseline (BIO4)",
+  bio10_baseline      = "BIO10 baseline from 2001",
+  bio11_baseline      = "BIO11 baseline from 2001",
+  bio18_baseline      = "Precip. Warmest Qtr. baseline (BIO18)",
+  bio19_baseline      = "Precip. Coldest Qtr. baseline (BIO19)",
+  # Climate — change trends
+  bio3_slope          = "Isothermality trend (BIO3)",
+  bio4_slope          = "Temp. Seasonality trend (BIO4)",
+  bio10_slope         = "Temp. Warmest Qtr. trend (BIO10)",
+  bio11_slope         = "Temp. Coldest Qtr. trend (BIO11)",
+  bio18_slope         = "Precip. Warmest Qtr. trend (BIO18)",
+  bio19_slope         = "Precip. Coldest Qtr. trend (BIO19)",
+  # Vegetation/Habitat
+  veg_height          = "Vegetation Height (m)",
+  TypoCH_1st_code     = "Habitat Type (TypoCH)",
+  # Topography/Soil
+  aspect_factor       = "Aspect",
+  slope               = "Slope (\u00b0)",
+  tpi                 = "Topographic Position Index (TPI)",
+  twi                 = "Topographic Wetness Index (TWI)",
+  soc_stock_0_120     = "Soil Organic Carbon (t/ha)",
+  humus_0_30          = "Humus Content",
+  kak_0_30            = "Cation Exchange Capacity (KAK)",
+  ph_0_30             = "Soil pH",
+  sand_0_30           = "Sand Content (%)",
+  # Land Use
+  LU_4                = "Land Use (4 classes)",
+  mow_int_cat         = "Mowing Intensity"
+)
+
+# Return a pretty label for a variable name, falling back to cleaned snake_case
+var_label <- function(v) {
+  if (v %in% names(VAR_LABELS)) VAR_LABELS[[v]] else gsub("_", " ", v)
+}
+
+# Significant continuous variables top_n by importance, categoricals excluded
+select_cont_vars <- function(imp_df, top_n = 4) {
+  imp_df |>
+    # Filter for significant continuous variables
+    dplyr::filter(pvalue < 0.05, !variable %in% CATEGORICAL_VARS) |>
+    # Select top_n by importance
+    dplyr::arrange(dplyr::desc(importance)) |>
+    dplyr::slice_head(n = top_n) |>
+    dplyr::pull(variable)
+}
+```
+
+## Load models and data
+```{r}
+# Load moss richness model and data
+rf_moss_richness   <- readRDS(file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_final_model.rds"))
+moss_richness_data <- readRDS(PATH_MDL3_MOSS_DATA) |> dplyr::select(-yearMoos, -aID_STAO)
+imp_moss_richness  <- read.csv(file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_variable_importance.csv"))
+
+# Load moss change model and data
+rf_moss_change   <- readRDS(file.path(DIR_MDL3_OUT, "moss_change/rf_moss_change_final_model.rds"))
+moss_change_data <- readRDS(PATH_MDL3_SLOPES_MOSS) |> dplyr::select(-aID_STAO, -total_change_pct)
+imp_moss_change  <- read.csv(file.path(DIR_MDL3_OUT, "moss_change/rf_moss_change_variable_importance.csv"))
+
+# Load plant richness model and data
+rf_plant_richness   <- readRDS(file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_final_model.rds"))
+plant_richness_data <- readRDS(PATH_MDL3_PLANT_DATA) |> dplyr::select(-yearPl, -aID_STAO)
+imp_plant_richness  <- read.csv(file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_variable_importance.csv"))
+
+# Load plant change model and data
+rf_plant_change   <- readRDS(file.path(DIR_MDL3_OUT, "plant_change/rf_plant_change_final_model.rds"))
+plant_change_data <- readRDS(PATH_MDL3_SLOPES_PLANT) |> dplyr::select(-aID_STAO, -total_change_pct)
+imp_plant_change  <- read.csv(file.path(DIR_MDL3_OUT, "plant_change/rf_plant_change_variable_importance.csv"))
+```
+
+## Partial Dependence Plots (PDPs) — Aligned Grid
+All significant continuous predictors (p < 0.05) are shown in aligned columns across both taxons. Predictors shared across models appear in the same column.
+
+### Helper functions
+```{r pdp-helpers}
+# All significant continuous variables for a model (no cap on n)
+select_sig_cont_vars <- function(imp_df) {
+  imp_df |>
+    dplyr::filter(pvalue < 0.05, !variable %in% CATEGORICAL_VARS) |>
+    dplyr::arrange(dplyr::desc(importance)) |>
+    dplyr::pull(variable)
+}
+
+# Aligned PDP grid: rows = models, cols = union of all significant predictors.
+# Predictors shared across taxons appear in the same column; empty = not significant.
+make_aligned_pdp_grid <- function(models, datasets, imp_dfs, row_labels,
+                                  cols_per_page = 4) {
+  sig_per_model <- lapply(imp_dfs, select_sig_cont_vars)
+
+  # Union ordered by average rank (shared top vars come first)
+  all_vars   <- unique(unlist(sig_per_model))
+  rank_score <- sapply(all_vars, function(v) {
+    sum(sapply(sig_per_model, function(sv) {
+      pos <- which(sv == v)
+      if (length(pos) == 0L) length(sv) + 1L else pos
+    }))
+  })
+  all_vars <- all_vars[order(rank_score)]
+  n_rows   <- length(models)
+
+  # Pad var list to next multiple of cols_per_page (extras become spacers)
+  n_chunks    <- ceiling(length(all_vars) / cols_per_page)
+  vars_padded <- c(all_vars, rep(NA_character_, n_chunks * cols_per_page - length(all_vars)))
+
+  # Build ONE flat plot list.  Layout (read left→right, top→bottom with ncol = cols_per_page):
+  #   chunk-1 taxon-1 | chunk-1 taxon-2 | chunk-2 taxon-1 | chunk-2 taxon-2 | …
+  # A single wrap_plots(ncol = cols_per_page) call then sizes every panel identically.
+  all_plots <- vector("list", n_chunks * n_rows * cols_per_page)
+
+  for (chunk_i in seq_len(n_chunks)) {
+    chunk_vars <- vars_padded[((chunk_i - 1L) * cols_per_page + 1L):(chunk_i * cols_per_page)]
+
+    for (r in seq_len(n_rows)) {
+      nm     <- names(models)[r]
+      sig    <- sig_per_model[[nm]]
+
+      for (c in seq_len(cols_per_page)) {
+        flat_idx <- (chunk_i - 1L) * n_rows * cols_per_page +
+                    (r - 1L) * cols_per_page + c
+        var <- chunk_vars[c]
+
+        if (is.na(var)) {
+          all_plots[[flat_idx]] <- patchwork::plot_spacer()
+          next
+        }
+
+        is_sig      <- var %in% sig
+        show_x_axis <- (r == n_rows)
+
+        pd <- pdp::partial(models[[nm]], pred.var = var,
+                           train = datasets[[nm]], smooth = TRUE)
+        all_plots[[flat_idx]] <- ggplot(pd, aes(x = .data[[var]], y = yhat)) +
+          geom_line(linewidth = 0.8,
+                    linetype  = if (is_sig) "solid" else "dashed",
+                    colour    = if (is_sig) "black" else "gray60") +
+          geom_rug(data = datasets[[nm]], aes(x = .data[[var]]),
+                   inherit.aes = FALSE, sides = "b",
+                   alpha = if (is_sig) 0.2 else 0.1) +
+          labs(
+            x = if (show_x_axis) var_label(var) else "",
+            y = if (c == 1L) row_labels[[nm]] else ""
+          ) +
+          theme_bw(base_size = 8) +
+          theme(
+            plot.margin  = unit(c(1, 0.5, 1, 0.5), "mm"),
+            axis.title.x = element_text(size = 7),
+            axis.text.x  = if (show_x_axis) element_text(size = 7) else element_blank(),
+            axis.ticks.x = if (show_x_axis) element_line() else element_blank()
+          )
+      }
+    }
+  }
+
+  patchwork::wrap_plots(all_plots, ncol = cols_per_page)
+}
+```
+
+### Species richness (moss + plant)
+```{r pdp-richness}
+pdp_grid_richness <- make_aligned_pdp_grid(
+  models     = list(moss  = rf_moss_richness,   plant = rf_plant_richness),
+  datasets   = list(moss  = moss_richness_data,  plant = plant_richness_data),
+  imp_dfs    = list(moss  = imp_moss_richness,   plant = imp_plant_richness),
+  row_labels = list(moss  = "Bryophyte\nRichness",    plant = "Vascular Plant\nRichness")
+)
+
+n_pages_richness <- ceiling(length(unique(unlist(
+  lapply(list(imp_moss_richness, imp_plant_richness), select_sig_cont_vars)
+))) / 4)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "combined_richness_pdp.png"),
+  plot     = pdp_grid_richness,
+  width    = REPORT_WIDTH_IN,
+  height   = PANEL_HEIGHT_IN * 1.85 * n_pages_richness,
+  dpi      = 300, bg = "white"
+)
+pdp_grid_richness
+```
+
+### Richness change (moss + plant)
+```{r pdp-change}
+pdp_grid_change <- make_aligned_pdp_grid(
+  models     = list(moss  = rf_moss_change,    plant = rf_plant_change),
+  datasets   = list(moss  = moss_change_data,   plant = plant_change_data),
+  imp_dfs    = list(moss  = imp_moss_change,    plant = imp_plant_change),
+  row_labels = list(moss  = "Bryophyte\nChange",     plant = "Vascular Plant\nChange")
+)
+
+n_pages_change <- ceiling(length(unique(unlist(
+  lapply(list(imp_moss_change, imp_plant_change), select_sig_cont_vars)
+))) / 4)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "combined_change_pdp.png"),
+  plot     = pdp_grid_change,
+  width    = REPORT_WIDTH_IN,
+  height   = PANEL_HEIGHT_IN * 1.85 * n_pages_change,
+  dpi      = 300, bg = "white"
+)
+pdp_grid_change
+```

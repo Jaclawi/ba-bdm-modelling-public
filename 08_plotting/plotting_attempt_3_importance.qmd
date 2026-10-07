@@ -1,0 +1,358 @@
+# Attempt 3, variable importance barplots
+## Load libraries
+```{r}
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(pdp)
+library(ranger)
+library(ggsci)
+library(extrafont)
+```
+
+## Global plotting settings
+```{r}
+source("./_config.r")
+DIR_PLOTS <- "08_plotting/plots"
+
+# Report column width in inches (147 mm)
+REPORT_WIDTH_IN <- 147 / 25.4
+
+# Fixed height per bar in inches with total panel height = n_bars * BAR_HEIGHT + PANEL_OVERHEAD
+BAR_HEIGHT    <- 0.09
+PANEL_OVERHEAD <- 0.5  # space for axis, margins
+LEGEND_HEIGHT  <- 0.6  # extra space at bottom for collected legend
+COMBINED_PADDING <- 0.45  # extra margin for top/bottom clipping in combined figures
+
+# Panel height in inches for a given importance data frame
+imp_plot_height <- function(imp_df, sig_threshold = 0.05) {
+  # Sums up the number of significant variables
+  n <- sum(imp_df$pvalue < sig_threshold)
+  # Returns the height of the panel in inches, with a minimum height of 0.2 inches
+  max(0.2, n * BAR_HEIGHT + PANEL_OVERHEAD)
+}
+
+# Load color PALette
+PAL <- pal_npg("nrc")(10)
+
+# Set global theme for ggplot2
+theme_set(
+    theme_classic() + # Start with a base theme
+    theme(
+    # 1. Globaly set font family and size for all text elements
+    text = element_text(
+        family = "Sans", # Global font family
+        size = 20          # Global base font size
+    ),
+
+    # 2. Fine-tuning for specific elements (overrides the global setting)
+    # Axis titles
+    axis.title = element_text(
+        size = 8, 
+        color = "black"
+    ),
+
+    # Axis text (text on the axes)
+    axis.text = element_text(size = 8, color = "black"),
+
+    # Legend titles
+    legend.title = element_text(
+        size = 8, 
+        face = "bold"
+    ),
+    # Legend text (text next to the symbols in the legend)
+    legend.text = element_text(size = 8)
+    )
+)
+```
+
+## Global constants for plotting
+```{r}
+# Categorical variables — rendered as bar charts instead of line PDPs
+CATEGORICAL_VARS <- c("aspect_factor", "mowing_intensity_factor", "mow_int_cat",
+                      "TypoCH_1st_code", "LU_4")
+
+# Human-readable labels for every potential predictor (used in PDP and importance plots)
+VAR_LABELS <- c(
+  # Climate — cross-sectional
+  bio3                = "Isothermality (BIO3)",
+  bio4                = "Temp. Seasonality (BIO4)",
+  bio10               = "Temp. Warmest Quarter (BIO10)",
+  bio11               = "Temp. Coldest Quarter (BIO11)",
+  bio18               = "Precip. Warmest Quarter (BIO18)",
+  bio19               = "Precip. Coldest Quarter (BIO19)",
+  radiation_y_15yr    = "Solar Radiation (15-yr avg)",
+  # Climate — change baselines
+  bio3_baseline       = "Isothermality baseline (BIO3)",
+  bio4_baseline       = "Temp. Seasonality baseline (BIO4)",
+  bio10_baseline      = "Temp. Warmest Qtr. baseline (BIO10)",
+  bio11_baseline      = "Temp. Coldest Qtr. baseline (BIO11)",
+  bio18_baseline      = "Precip. Warmest Qtr. baseline (BIO18)",
+  bio19_baseline      = "Precip. Coldest Qtr. baseline (BIO19)",
+  # Climate — change trends
+  bio3_slope          = "Isothermality trend (BIO3)",
+  bio4_slope          = "Temp. Seasonality trend (BIO4)",
+  bio10_slope         = "Temp. Warmest Qtr. trend (BIO10)",
+  bio11_slope         = "Temp. Coldest Qtr. trend (BIO11)",
+  bio18_slope         = "Precip. Warmest Qtr. trend (BIO18)",
+  bio19_slope         = "Precip. Coldest Qtr. trend (BIO19)",
+  # Vegetation/Habitat
+  veg_height          = "Vegetation Height (m)",
+  TypoCH_1st_code     = "Habitat Type (TypoCH)",
+  # Topography/Soil
+  aspect_factor       = "Aspect",
+  slope               = "Slope (\u00b0)",
+  tpi                 = "Topographic Position Index (TPI)",
+  twi                 = "Topographic Wetness Index (TWI)",
+  soc_stock_0_120     = "Soil Organic Carbon (t/ha)",
+  humus_0_30          = "Humus Content",
+  kak_0_30            = "Cation Exchange Capacity (KAK)",
+  ph_0_30             = "Soil pH",
+  sand_0_30           = "Sand Content (%)",
+  # Land Use
+  LU_4                = "Land Use (4 classes)",
+  mow_int_cat         = "Mowing Intensity"
+)
+
+# Return a pretty label for a variable name, falling back to cleaned snake_case
+var_label <- function(v) {
+  if (v %in% names(VAR_LABELS)) VAR_LABELS[[v]] else gsub("_", " ", v)
+}
+
+# Variable group membership (covers both cross-sectional and change models)
+IMP_VAR_GROUPS <- list(
+  "Climate" = c(
+    "bio3", "bio4", "bio10", "bio11", "bio18", "bio19", "radiation_y_15yr",
+    "bio3_baseline", "bio4_baseline", "bio10_baseline",
+    "bio11_baseline", "bio18_baseline", "bio19_baseline",
+    "bio3_slope", "bio4_slope", "bio10_slope",
+    "bio11_slope", "bio18_slope", "bio19_slope"
+  ),
+  "Vegetation/Habitat" = c("veg_height", "TypoCH_1st_code"),
+  "Topography/Soil" = c(
+    "aspect_factor", "slope", "tpi", "twi",
+    "soc_stock_0_120", "humus_0_30", "kak_0_30", "ph_0_30", "sand_0_30"
+  ),
+  "Land Use" = c("LU_4", "mow_int_cat")
+)
+
+imp_get_group <- function(var) {
+  for (grp in names(IMP_VAR_GROUPS)) {
+    if (var %in% IMP_VAR_GROUPS[[grp]]) return(grp)
+  }
+  return("Other")
+}
+
+# Group colours from the global NPG PALette
+IMP_GROUP_COLORS <- c(
+  "Climate"            = PAL[1],
+  "Vegetation/Habitat" = PAL[3],
+  "Topography/Soil"    = PAL[9],
+  "Land Use"           = PAL[4],
+  "Other"              = "gray70"
+)
+
+# Significant continuous variables top_n by importance, categoricals excluded
+select_cont_vars <- function(imp_df, top_n = 4) {
+  imp_df |>
+    # Filter for significant continuous variables
+    dplyr::filter(pvalue < 0.05, !variable %in% CATEGORICAL_VARS) |>
+    # Select top_n by importance
+    dplyr::arrange(dplyr::desc(importance)) |>
+    dplyr::slice_head(n = top_n) |>
+    dplyr::pull(variable)
+}
+
+# Compact p-value label (3 significant figures)
+fmt_pval <- function(p) {
+  ifelse(p < 0.001, "p<0.001", sprintf("p=%.3g", p))
+}
+```
+
+
+## Load models and data
+```{r}
+# Load moss richness model and data
+rf_moss_richness   <- readRDS(file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_final_model.rds"))
+moss_richness_data <- readRDS(PATH_MDL3_MOSS_DATA) |> dplyr::select(-yearMoos, -aID_STAO)
+imp_moss_richness  <- read.csv(file.path(DIR_MDL3_OUT, "moss_richness/rf_moss_variable_importance.csv"))
+
+# Load moss change model and data
+rf_moss_change   <- readRDS(file.path(DIR_MDL3_OUT, "moss_change/rf_moss_change_final_model.rds"))
+moss_change_data <- readRDS(PATH_MDL3_SLOPES_MOSS) |> dplyr::select(-aID_STAO, -total_change_pct)
+imp_moss_change  <- read.csv(file.path(DIR_MDL3_OUT, "moss_change/rf_moss_change_variable_importance.csv"))
+
+# Load plant richness model and data
+rf_plant_richness   <- readRDS(file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_final_model.rds"))
+plant_richness_data <- readRDS(PATH_MDL3_PLANT_DATA) |> dplyr::select(-yearPl, -aID_STAO)
+imp_plant_richness  <- read.csv(file.path(DIR_MDL3_OUT, "plant_richness/rf_plant_variable_importance.csv"))
+
+# Load plant change model and data
+rf_plant_change   <- readRDS(file.path(DIR_MDL3_OUT, "plant_change/rf_plant_change_final_model.rds"))
+plant_change_data <- readRDS(PATH_MDL3_SLOPES_PLANT) |> dplyr::select(-aID_STAO, -total_change_pct)
+imp_plant_change  <- read.csv(file.path(DIR_MDL3_OUT, "plant_change/rf_plant_change_variable_importance.csv"))
+```
+
+## Barplot of significant variable importance
+
+Horizontal bar charts show all predictors with permutation importance p < 0.05 per model, sorted by importance. Bars are coloured by environmental group, the p-value from the permutation test is displayed at the end of each bar.
+
+### Main function to build a horizontal barplot of variable importance
+```{r}
+# Build a sorted horizontal barplot for one model
+make_imp_barplot <- function(imp_df, sig_threshold = 0.05, x_max = NULL) {
+
+  # Filter for significant variables, add labels, and sort by importance
+  d <- imp_df |>
+
+    # Grabs the significant variables and adds the group and labels for plotting
+    dplyr::filter(pvalue < sig_threshold) |>
+    dplyr::mutate(
+
+      # Add group, labels and format the p-value for plotting
+      group    = sapply(variable, imp_get_group),
+      var_lbl  = sapply(variable, var_label),
+      pval_lbl = fmt_pval(pvalue)
+    ) |>
+
+    # Aranges selected variables by importance and sets the factor levels for plotting
+    dplyr::arrange(importance) |>
+    dplyr::mutate(var_lbl = factor(var_lbl, levels = unique(var_lbl)))
+
+  # Build the horizontal barplot
+  ggplot(d, aes(x = importance, y = var_lbl, fill = group)) +
+
+    # Add bars and p-value labels
+    geom_col(width = 0.7) +
+    geom_text(aes(label = pval_lbl),
+              hjust = -0.08, size = 2.8, color = "gray40") +
+
+    # Set the fill colors, remove legend title, and order the legend
+    scale_fill_manual(
+      values = IMP_GROUP_COLORS,
+      name   = NULL,
+    ) +
+
+    # Set the x-axis limits and expand the right side to make room for p-value labels
+    # Can be passed as an argument to adjust for different importance ranges across models
+    scale_x_continuous(
+      expand = expansion(mult = c(0, 0), add = c(0, 0)),
+      limits = if (!is.null(x_max)) c(0, x_max) else NULL
+    ) +
+    labs(x = NULL, y = NULL) +
+    theme(
+      # Remove the legend for individual plots since it will be collected in combined plots
+      legend.position = "none"
+    )
+}
+```
+
+### Moss richness
+```{r}
+p_imp_moss_richness <- make_imp_barplot(imp_moss_richness, x_max = 20)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "moss_richness/rf_moss_importance_barplot.png"),
+  plot     = p_imp_moss_richness,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_moss_richness),
+  dpi      = 300, bg = "white"
+)
+```
+
+### Plant richness
+```{r}
+p_imp_plant_richness <- make_imp_barplot(imp_plant_richness, x_max = 90)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "plant_richness/rf_plant_importance_barplot.png"),
+  plot     = p_imp_plant_richness,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_plant_richness),
+  dpi      = 300, bg = "white"
+)
+```
+
+### Moss change (richness slope)
+```{r}
+p_imp_moss_change <- make_imp_barplot(imp_moss_change, x_max = 0.017)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "moss_change/rf_moss_change_importance_barplot.png"),
+  plot     = p_imp_moss_change,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_moss_change),
+  dpi      = 300, bg = "white"
+)
+```
+
+### Plant change (richness slope)
+```{r}
+p_imp_plant_change <- make_imp_barplot(imp_plant_change, x_max = 0.115)
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "plant_change/rf_plant_change_importance_barplot.png"),
+  plot     = p_imp_plant_change,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_plant_change),
+  dpi      = 300, bg = "white"
+)
+```
+
+### Combined richness importance figure (moss + plant)
+```{r}
+combined_imp_richness <- (
+  # Combine moss and plant richness importance plots into a single figure
+  p_imp_moss_richness /
+  (p_imp_plant_richness + labs(x = "Permutation Importance (% decrease in explained R\u00b2)"))
+) +
+  plot_layout(
+    # Heights proportional to bar count so each bar is the same physical height
+    guides  = "collect",
+    heights = c(
+      sum(imp_moss_richness$pvalue  < 0.05),
+      sum(imp_plant_richness$pvalue < 0.05)
+    )
+  ) &
+  theme(legend.position = "bottom", legend.key.size = unit(4.5, "mm"), legend.spacing.x = unit(10, "mm"),
+        legend.box.margin = margin(t = -2, unit = "mm"))
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "combined_importance_richness_barplot.png"),
+  plot     = combined_imp_richness,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_moss_richness) + imp_plot_height(imp_plant_richness) + LEGEND_HEIGHT + COMBINED_PADDING,
+  dpi      = 300, bg = "white"
+)
+```
+
+### Combined change importance figure (moss + plant)
+```{r}
+combined_imp_change <- (
+  # Combine moss and plant change importance plots into a single figure
+  p_imp_moss_change /
+  (p_imp_plant_change +
+     labs(x = "Permutation Importance (% decrease in explained R\u00b2)") +
+     theme(
+       legend.position   = "bottom",
+       legend.key.size   = unit(4.5, "mm"),
+       legend.spacing.x  = unit(10, "mm"),
+       legend.box.margin = margin(t = -2, unit = "mm")
+     ))
+) +
+  plot_layout(
+    # Heights proportional to bar count so each bar is the same physical height
+    heights = c(
+      sum(imp_moss_change$pvalue  < 0.05),
+      sum(imp_plant_change$pvalue < 0.05)
+    )
+  )
+
+ggsave(
+  filename = file.path(DIR_PLOTS, "combined_importance_change_barplot.png"),
+  plot     = combined_imp_change,
+  width    = REPORT_WIDTH_IN,
+  height   = imp_plot_height(imp_moss_change) + imp_plot_height(imp_plant_change) + LEGEND_HEIGHT + COMBINED_PADDING - 0.3, # Slightly reduce height to avoid clipping the legend
+  dpi      = 300, bg = "white"
+)
+```

@@ -1,0 +1,24 @@
+Running Habitat Type rasterization...
+Loading cropped habitat map...
+ class       : SpatVector 
+ geometry    : polygons 
+ dimensions  : 373236, 9  (geometries, attributes)
+ extent      : 2490499, 2833428, 1077499, 1290510  (xmin, xmax, ymin, ymax)
+ source      : habitatmap_cropped.gpkg (habitat_cropped)
+ coord. ref. : CH1903+ / LV95 (EPSG:2056) 
+ names       : TypoCH_NUM Probability Cover             Version TypoCH
+ type        :      <int>       <int> <num>            <POSIXt>  <chr>
+ values      :          3        9999  9999 1899-12-30 11:12:00      3
+                        3        9999  9999 1899-12-30 11:12:00      3
+                        3        9999  9999 1899-12-30 11:12:00      3
+ Shape_Length Shape_Area POLYID aID_STAO
+        <num>      <num>  <int>    <chr>
+        12.93      5.833 169023   491114
+        11.86      5.683 169024   491114
+        64.57      126.5 169099   491114
+Creating template raster (2m resolution, EPSG:2056)...
+Extracting hierarchical levels from TypoCH_NUM...
+Rasterizing habitat map into 2 separate rasters...
+|---------|---------|---------|---------|=========================================                                          |---------|---------|---------|---------|=========================================                                          |---------|---------|---------|---------|=========================================                                          Saved Level 1 Habitat Map to: ../data/env/habitat_biotic/processed/habitat_map_v1_2/habitatmap_level1_2m.tif 
+|---------|---------|---------|---------|=========================================                                          Saved Level 2 Habitat Map to: ../data/env/habitat_biotic/processed/habitat_map_v1_2/habitatmap_level2_2m.tif 
+Job completed successfully!

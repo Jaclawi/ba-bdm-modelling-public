@@ -1,0 +1,23 @@
+Running Kobo Soil interpolation...
+Loading data...
+Plots loaded       : 1445 
+KoBo variables     : 19 
+Cores used         : 32 
+
+Missing values before imputation:
+soc_stock_0_120      humus_0_30     humus_30_60    humus_60_120        kak_0_30 
+            386             367             367             367             367 
+      kak_30_60      kak_60_120         ph_0_30        ph_30_60       ph_60_120 
+            367             367             367             367             367 
+      sand_0_30      sand_30_60     sand_60_120    schluff_0_30   schluff_30_60 
+            367             367             367             367             367 
+ schluff_60_120        ton_0_30       ton_30_60      ton_60_120 
+            367             367             367             367 
+
+Starting parallel nearest-pixel imputation...
+
+Missing values after imputation:
+  None — all values imputed successfully.
+
+Saved imputed soil data to: ../data/bdm/processed/env_extracted/plot_soil_kobo_interp.rds 
+Job completed successfully!

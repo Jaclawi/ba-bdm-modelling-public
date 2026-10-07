@@ -1,0 +1,143 @@
+# Load libraries
+```{r}
+library(dplyr)
+library(sf)
+library(randomForest)
+library(ranger)
+library(caret)
+library(performance)
+```
+
+# Load data
+```{r}
+source("_config.r")
+
+# Load preprocessed moss model data (slopes + climate features + static env, one row per plot)
+moss_data <- readRDS(PATH_MDL2_MOSS_DATA)
+```
+
+# Data preparation
+## Check dimensions and remove incomplete rows
+```{r}
+dim(moss_data) # 1438 x 187
+View(moss_data)
+```
+
+# Species change modelling
+## Train test split
+```{r}
+set.seed(123)
+train_idx         <- caret::createDataPartition(moss_data$total_change_pct, p = 0.8, list = FALSE)
+moss_change_train <- moss_data[ train_idx, ]
+moss_change_test  <- moss_data[-train_idx, ]
+```
+
+## Hyperparameter tuning, mtry and min.node.size
+```{r}
+train_control <- caret::trainControl(
+  method          = "repeatedcv",
+  number          = 5,
+  repeats         = 10,
+  savePredictions = "final",
+  returnResamp    = "all"
+)
+
+moss_change_grid <- base::expand.grid(
+  mtry          = c(10, 20, floor(ncol(moss_change_train) / 3), floor(ncol(moss_change_train) * 0.75), ncol(moss_change_train) - 1),
+  splitrule     = "variance",
+  min.node.size = c(3, 5, 7, 10)
+)
+
+rf_moss_change_tune <- caret::train(
+  total_change_pct ~ .,
+  set.seed(123),
+  method      = "ranger",
+  importance  = "none",
+  data        = moss_change_train,
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = moss_change_grid,
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE
+)
+
+saveRDS(rf_moss_change_tune, file = file.path(DIR_MDL2_OUT, "rf_moss_change_tune.rds"))
+write.csv(rf_moss_change_tune$results, file = file.path(DIR_MDL2_OUT, "rf_moss_change_tune_ranking.csv"), row.names = FALSE)
+```
+
+## Fit final model with best hyperparameters
+```{r}
+best_mtry      <- rf_moss_change_tune$bestTune$mtry
+best_nodesize  <- rf_moss_change_tune$bestTune$min.node.size
+
+rf_moss_change <- ranger::ranger(
+  total_change_pct ~ .,
+  data          = moss_change_train,
+  num.trees     = 500,
+  mtry          = best_mtry,
+  min.node.size = best_nodesize,
+  splitrule     = "variance",
+  importance    = "permutation",
+  num.threads   = max(1, parallel::detectCores() - 1),
+  seed          = 123
+)
+
+rf_moss_change
+
+# Save the model
+saveRDS(rf_moss_change, file = file.path(DIR_MDL2_OUT, "rf_moss_change.rds"))
+```
+
+### Evaluate on test data
+```{r}
+# Predict on test data
+rf_moss_change_test_pred <- predict(rf_moss_change, data = moss_change_test)
+
+# Calculate performance metrics
+r2_moss_change  <- 1 - sum((rf_moss_change_test_pred$predictions - moss_change_test$total_change_pct)^2) /
+                       sum((moss_change_test$total_change_pct - mean(moss_change_test$total_change_pct))^2)
+mse_moss_change <- mean((rf_moss_change_test_pred$predictions - moss_change_test$total_change_pct)^2)
+
+r2_moss_change
+mse_moss_change
+```
+
+## Fit model using cv
+```{r}
+rf_moss_change_full_cv <- caret::train(
+  total_change_pct ~ .,
+  data        = moss_data,
+  method      = "ranger",
+  importance  = "none",
+  num.trees   = 500,
+  trControl   = train_control,
+  tuneGrid    = expand.grid(
+    mtry          = floor(ncol(moss_data) / 3),
+    splitrule     = "variance",
+    min.node.size = 5
+  ),
+  na.action   = na.omit,
+  num.threads = max(1, parallel::detectCores() - 1),
+  verbose     = TRUE,
+  seed = 123,
+)
+
+rf_moss_change_full_cv
+
+resamp <- rf_moss_change_full_cv$resample
+data.frame(
+  metric = c("RMSE", "Rsquared", "MAE"),
+  mean   = colMeans(resamp[, c("RMSE", "Rsquared", "MAE")], na.rm = TRUE),
+  sd     = apply(resamp[, c("RMSE", "Rsquared", "MAE")], 2, sd, na.rm = TRUE)
+)
+
+#           metric       mean         sd
+#RMSE         RMSE 97.5462433 6.83410139
+#Rsquared Rsquared  0.1257051 0.04390845
+#MAE           MAE 64.1007917 3.65302872
+
+# Save the cv model and results
+saveRDS(rf_moss_change_full_cv, file = file.path(DIR_MDL2_OUT, "rf_moss_change_full_cv.rds"))
+write.csv(rf_moss_change_full_cv$results, file = file.path(DIR_MDL2_OUT, "rf_moss_change_full_cv_results.csv"), row.names = FALSE)
+```
